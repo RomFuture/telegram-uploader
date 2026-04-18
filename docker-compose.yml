@@ -1,0 +1,163 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      telegram-bot-api:
+        condition: service_healthy
+    command: ["python", "-m", "composition.bootstrap"]
+
+  celery-worker-archive-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      [
+        "celery",
+        "-A",
+        "infrastructure.worker.celery_app:celery_app",
+        "worker",
+        "-l",
+        "INFO",
+        "-Q",
+        "archive",
+        "-c",
+        "1",
+        "-n",
+        "archive1@%h",
+      ]
+
+  celery-worker-archive-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      [
+        "celery",
+        "-A",
+        "infrastructure.worker.celery_app:celery_app",
+        "worker",
+        "-l",
+        "INFO",
+        "-Q",
+        "archive",
+        "-c",
+        "1",
+        "-n",
+        "archive2@%h",
+      ]
+
+  celery-worker-upload:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      [
+        "celery",
+        "-A",
+        "infrastructure.worker.celery_app:celery_app",
+        "worker",
+        "-l",
+        "INFO",
+        "-Q",
+        "upload",
+        "-c",
+        "1",
+        "-n",
+        "upload@%h",
+      ]
+
+  celery-worker-cleanup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      [
+        "celery",
+        "-A",
+        "infrastructure.worker.celery_app:celery_app",
+        "worker",
+        "-l",
+        "INFO",
+        "-Q",
+        "cleanup",
+        "-c",
+        "1",
+        "-n",
+        "cleanup@%h",
+      ]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-telegram_uploader}
+      POSTGRES_USER: ${POSTGRES_USER:-telegram_uploader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-telegram_uploader}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-telegram_uploader} -d ${POSTGRES_DB:-telegram_uploader}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api:latest
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:-0}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-change_me}
+      TELEGRAM_LOCAL: 1
+    ports:
+      - "8081:8081"
+    command:
+      - "--api-id=${TELEGRAM_API_ID:-0}"
+      - "--api-hash=${TELEGRAM_API_HASH:-change_me}"
+      - "--http-port=8081"
+      - "--local"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8081"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

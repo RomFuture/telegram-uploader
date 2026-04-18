@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools==75.8.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telegram-uploader"
+version = "0.1.0"
+description = "Provider-agnostic messenger storage core with Telegram-first adapter."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "celery==5.4.0",
+  "redis==5.2.1",
+  "psycopg[binary]==3.2.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy==1.15.0",
+  "pytest==8.3.5",
+  "ruff==0.11.2",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = ["celery", "celery.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "infrastructure.worker.tasks"
+disable_error_code = ["misc"]
+
+[[tool.mypy.overrides]]
+module = ["psycopg", "psycopg.*"]
+ignore_missing_imports = true

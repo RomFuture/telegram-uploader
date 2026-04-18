@@ -1,3 +1,17 @@
+Metadata-Version: 2.2
+Name: telegram-uploader
+Version: 0.1.0
+Summary: Provider-agnostic messenger storage core with Telegram-first adapter.
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: celery==5.4.0
+Requires-Dist: redis==5.2.1
+Requires-Dist: psycopg[binary]==3.2.4
+Provides-Extra: dev
+Requires-Dist: mypy==1.15.0; extra == "dev"
+Requires-Dist: pytest==8.3.5; extra == "dev"
+Requires-Dist: ruff==0.11.2; extra == "dev"
+
 # Portable Messenger Disk
 
 `Portable Messenger Disk` — Linux-приложение для резервного хранения файлов через мессенджеры.
