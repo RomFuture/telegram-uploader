@@ -1,6 +1,7 @@
 from infrastructure.worker.celery_app import (
     QUEUE_ARCHIVE,
     QUEUE_CLEANUP,
+    QUEUE_RESTORE,
     QUEUE_UPLOAD,
     celery_app,
 )
@@ -12,6 +13,7 @@ def test_celery_task_routes_map_stages_to_expected_queues() -> None:
     assert routes["infrastructure.worker.tasks.archive_volume"]["queue"] == QUEUE_ARCHIVE
     assert routes["infrastructure.worker.tasks.upload_volume"]["queue"] == QUEUE_UPLOAD
     assert routes["infrastructure.worker.tasks.cleanup_volume"]["queue"] == QUEUE_CLEANUP
+    assert routes["infrastructure.worker.tasks.restore_volume"]["queue"] == QUEUE_RESTORE
 
 
 def test_celery_default_queue_is_archive() -> None:

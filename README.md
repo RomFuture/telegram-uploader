@@ -111,6 +111,17 @@ flowchart TB
 - Секреты (токены, пароли архивов) не хранятся в git и не пишутся в открытом виде в логах.
 - Восстановление возможно по данным БД и идентификаторам, сохраненным провайдером.
 
+## Roadmap — logging & observability (v1)
+
+- **Session log directory in the project:** persist operational logs under a dedicated path (e.g. `logs/sessions/<session_id>/` — task start/finish/retry, provider errors, restore milestones). Complement stdout/Docker logs; redact secrets; keep `logs/` out of git (`.gitignore`).
+
+## Roadmap — post-v1 live provider verification (Telegram)
+
+- **После релиза v1:** прогнать реальные upload/restore тесты (бот, целевая группа, локальный `telegram-bot-api`).
+- Зафиксировать, **через что Telegram отдаёт файл при скачивании** (цепочка Bot API: `sendDocument` → сохранённые id → `getFile` → URL/путь).
+- **Проверить схему `provider_download_ref`:** значение в `UploadResult` (например `file_unique_id`) vs обновление в `ProviderFileInfo` (`file_path`); достаточно ли `external_file_id` для restore; нужно ли поле в DTO/БД или схема нерабочая/избыточная.
+- По результатам обновить адаптер, `INTERNAL_SPEC.md`, DTO и миграции при необходимости.
+
 ## Roadmap после v1
 
 - Добавить адаптеры `Max` и `VK` по тому же контракту провайдера.

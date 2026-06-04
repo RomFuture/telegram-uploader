@@ -241,12 +241,13 @@ Checkpoint:
 
 **Queue and worker topology (current default)**
 
-- Three Redis queues: `archive`, `upload`, `cleanup`.
-- **Four worker processes** in `docker-compose.yml`:
+- Four Redis queues: `archive`, `upload`, `cleanup`, `restore`.
+- **Five worker processes** in `docker-compose.yml`:
   - **2** workers consume only `archive` (CPU/disk-heavy stage),
   - **1** worker consumes only `upload` (network-heavy),
-  - **1** worker consumes only `cleanup` (fast local I/O).
-- Code: `src/infrastructure/worker/celery_app.py` (broker/backend from `REDIS_*`, `task_routes`), `src/infrastructure/worker/tasks.py` (stub tasks: `archive_volume`, `upload_volume`, `cleanup_volume`).
+  - **1** worker consumes only `cleanup` (fast local I/O),
+  - **1** worker consumes only `restore` (network-heavy download/restore stage).
+- Code: `src/infrastructure/worker/celery_app.py` (broker/backend from `REDIS_*`, `task_routes`), `src/infrastructure/worker/tasks.py` (stub tasks: `archive_volume`, `upload_volume`, `cleanup_volume`, `restore_volume`).
 - Next: enqueue from use cases, chain tasks per volume, persist IDs in DB, configure retries/backoff and idempotency.
 
 Checkpoint:
@@ -346,6 +347,7 @@ Checkpoint:
 ## 14. Observability and Operational Safety
 
 1. Store operational logs locally.
+   - **Roadmap item:** dedicated project log area for sessions (e.g. `logs/sessions/<session_id>/`) — append per-session files for pipeline events (archive/upload/cleanup/restore), in addition to stdout; redact secrets; exclude `logs/` from git.
 2. Never send verbose operational text logs into messenger.
 3. Add structured events for:
    - task start/finish/retry/failure
@@ -374,4 +376,16 @@ Checkpoint:
 
 Final checkpoint:
 - `v1` is stable, documented, and prepared for future providers (`Max`, `VK`) without rewriting core architecture.
+
+## 16. Post-v1: Live Telegram upload/download verification (roadmap)
+
+**After v1 release**, run real-file integration tests (not stubs):
+
+1. Upload encrypted volumes to a real target group; record raw Bot API fields (`file_id`, `message_id`, `file_unique_id`, `file_path` after `getFile`).
+2. Trace the **actual download path** the adapter uses (`get_file_info` → `download_file` URL construction).
+3. **Validate `provider_download_ref`:** does the value saved at upload matter for restore, or is only `external_file_id` + fresh `ProviderFileInfo` required? If the dual meaning (`file_unique_id` vs `file_path`) breaks restore, revise DTO, DB columns, `INTERNAL_SPEC.md`, and `TelegramProviderV1`.
+4. Archive test evidence (request/response samples redacted) next to session logs roadmap item.
+
+Checkpoint:
+- Documented decision: keep, rename, or drop `provider_download_ref` on `UploadResult` / DB based on live behavior.
 

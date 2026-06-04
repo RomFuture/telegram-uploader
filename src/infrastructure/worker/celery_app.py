@@ -5,6 +5,7 @@ from infrastructure.config import load_config
 QUEUE_ARCHIVE = "archive"
 QUEUE_UPLOAD = "upload"
 QUEUE_CLEANUP = "cleanup"
+QUEUE_RESTORE = "restore"
 
 
 def _make_celery() -> Celery:
@@ -19,6 +20,7 @@ def _make_celery() -> Celery:
         "infrastructure.worker.tasks.archive_volume": {"queue": QUEUE_ARCHIVE},
         "infrastructure.worker.tasks.upload_volume": {"queue": QUEUE_UPLOAD},
         "infrastructure.worker.tasks.cleanup_volume": {"queue": QUEUE_CLEANUP},
+        "infrastructure.worker.tasks.restore_volume": {"queue": QUEUE_RESTORE},
     }
     app.conf.task_default_queue = QUEUE_ARCHIVE
     app.conf.task_serializer = "json"

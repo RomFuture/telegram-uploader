@@ -114,6 +114,31 @@ services:
         "cleanup@%h",
       ]
 
+  celery-worker-restore:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      [
+        "celery",
+        "-A",
+        "infrastructure.worker.celery_app:celery_app",
+        "worker",
+        "-l",
+        "INFO",
+        "-Q",
+        "restore",
+        "-c",
+        "1",
+        "-n",
+        "restore@%h",
+      ]
+
   postgres:
     image: postgres:16-alpine
     environment:
