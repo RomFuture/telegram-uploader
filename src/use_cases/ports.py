@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from application.dto import (
+from use_cases.dto import (
     ClassifiedProviderError,
     ProviderFileInfo,
     ProviderLimits,

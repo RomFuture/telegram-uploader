@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from application.dto import (
+from use_cases.dto import (
     ClassifiedProviderError,
     ProviderErrorCategory,
     ProviderFileInfo,
     ProviderLimits,
     UploadResult,
 )
-from application.ports import StorageProviderPort
+from use_cases.ports import StorageProviderPort
 
 
 class DummyProvider:

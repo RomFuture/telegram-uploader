@@ -51,12 +51,12 @@ Write these rules in your internal spec first and treat them as non-negotiable:
 2. Define Python environment policy:
    - Use one consistent dependency manager.
    - Lock dependency versions for reproducibility.
-3. Create base project layout by layers:
-   - `src/domain`
-   - `src/application`
-   - `src/infrastructure`
-   - `src/presentation`
-   - `src/composition` (or equivalent bootstrap module)
+3. Create base project layout by layers (folder names match onion sketch):
+   - `src/domain` — center
+   - `src/use_cases` — use cases + ports + DTOs (middle ring)
+   - `src/infrastructure` — DB, Celery, 7z, Telegram adapters
+   - `src/presentation` — GUI (shell)
+   - `src/application` — bootstrap / wiring (outer Application shell)
 4. Add quality baseline:
    - Linter
    - Formatter
@@ -71,7 +71,7 @@ Checkpoint:
 
 ## 3. Architecture Contract First (before adapters)
 
-1. Define `StorageProviderPort` in `application` layer:
+1. Define `StorageProviderPort` in `use_cases` layer:
    - `healthcheck`
    - `upload_file`
    - `get_file_info`
@@ -86,14 +86,14 @@ Checkpoint:
    - Source item
    - Archive volume
    - Processing states and transitions
-4. Define DB persistence contracts (repositories) in application layer.
+4. Define DB persistence contracts (repositories) in use_cases layer.
 
 **Implementation status**
 
-- `StorageProviderPort`: `src/application/ports.py`
-- Application DTOs: `src/application/dto.py`
+- `StorageProviderPort`: `src/use_cases/ports.py`
+- Provider DTOs: `src/use_cases/dto.py`
 - Domain models and enums: `src/domain/models.py` — `SourceItem` includes `display_name: str`; `SourceItem.create()` requires it.
-- Repository protocols: `src/application/repositories.py` — `SourceItemRepository` includes `get(id)`.
+- Repository protocols: `src/use_cases/repositories.py` — `SourceItemRepository` includes `get(id)`.
 - Use cases and concrete repository implementations are **not** wired yet.
 
 Checkpoint:
@@ -117,7 +117,7 @@ Checkpoint:
 - `docker-compose.yml`: `app`, `postgres`, `redis`, `telegram-bot-api`, plus **four Celery worker services** (see section 8).
 - `Dockerfile`: builds the Python image; installs the package in editable mode with dev tools.
 - `src/infrastructure/config.py`: loads DSN/URLs from environment (`POSTGRES_*`, `REDIS_*`, `TELEGRAM_*`); includes `archive_cache_dir` from `ARCHIVE_CACHE_DIR` (default `/tmp/telegram_uploader`).
-- `src/composition/bootstrap.py`: loads config, **applies DB migrations**, **pings Redis**, logs to stdout; runnable as `python -m composition.bootstrap`.
+- `src/application/bootstrap.py`: loads config, **applies DB migrations**, **pings Redis**, logs to stdout; runnable as `python -m application.bootstrap`.
 - `.env.example`: placeholders for DB, Redis, Telegram, `ARCHIVE_ENCRYPTION_KEY`, `ARCHIVE_CACHE_DIR`.
 
 Checkpoint:
@@ -150,7 +150,7 @@ Checkpoint:
 - `src/infrastructure/db/migrations/0001_initial.sql`: base tables (`upload_sessions`, `source_items`, `archive_volumes`) + indexes.
 - `src/infrastructure/db/migrations/0002_add_display_name.sql`: `ALTER TABLE source_items ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`.
 - `src/infrastructure/db/migrate.py`: lists ordered `*.sql` files and **`apply_migrations(dsn)`** applies pending files, recording versions in table `schema_migrations`.
-- `src/composition/bootstrap.py` runs **`apply_migrations`** on startup (requires PostgreSQL reachable).
+- `src/application/bootstrap.py` runs **`apply_migrations`** on startup (requires PostgreSQL reachable).
 - Repository implementations (CRUD) are **not** wired yet.
 
 Checkpoint:

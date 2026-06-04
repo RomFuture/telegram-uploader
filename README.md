@@ -83,11 +83,11 @@ flowchart TB
 
 - Зафиксированы обязательные продуктовые правила в `docs/INTERNAL_SPEC.md`.
 - Добавлен Python baseline в `pyproject.toml` + pinned dev lock в `requirements-dev.lock`.
-- Подготовлена слоистая структура `src/domain`, `src/application`, `src/infrastructure`, `src/presentation`, `src/composition`.
+- Подготовлена слоистая структура (см. схему слоёв): `src/domain`, `src/use_cases`, `src/infrastructure`, `src/presentation`, `src/application` (shell/bootstrap).
 - Добавлены базовые контракты:
-  - `StorageProviderPort` в `src/application/ports.py`;
-  - DTO результатов/ошибок провайдера в `src/application/dto.py`;
-  - repository-порты в `src/application/repositories.py`;
+  - `StorageProviderPort` в `src/use_cases/ports.py`;
+  - DTO результатов/ошибок провайдера в `src/use_cases/dto.py`;
+  - repository-порты в `src/use_cases/repositories.py`;
   - доменные модели/статусы в `src/domain/models.py`.
 - Добавлены smoke/contract skeleton tests в `tests/`.
 

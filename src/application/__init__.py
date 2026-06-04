@@ -1,1 +1,1 @@
-"""Application layer contracts and use-case boundaries."""
+"""Application bootstrap and dependency wiring."""

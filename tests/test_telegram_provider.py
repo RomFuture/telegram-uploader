@@ -1,6 +1,6 @@
 from urllib import error
 
-from application.dto import ProviderErrorCategory
+from use_cases.dto import ProviderErrorCategory
 from infrastructure.providers.telegram_provider import TelegramProviderV1
 
 

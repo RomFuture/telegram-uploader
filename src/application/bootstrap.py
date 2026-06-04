@@ -14,7 +14,7 @@ def bootstrap() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
         stream=sys.stdout,
     )
-    log = logging.getLogger("composition.bootstrap")
+    log = logging.getLogger("application.bootstrap")
     cfg = load_config()
     log.info("Environment: %s", cfg.app_env)
     apply_migrations(cfg.postgres_dsn)
