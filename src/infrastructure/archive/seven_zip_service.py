@@ -23,7 +23,9 @@ def build_hashed_volume_name(display_name: str, part_number: int) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class ArchiveVolume:
+class OutgoingVolume:
+    """One split 7z part in ``outgoing/``, ready for upload (not a domain/DB entity)."""
+
     part_number: int
     outgoing_path: Path
     outgoing_file_name: str
@@ -33,7 +35,7 @@ class ArchiveVolume:
 class ArchivePipelineResult:
     """Encrypted split volumes and deterministic order manifest."""
 
-    volumes: list[ArchiveVolume]
+    volumes: list[OutgoingVolume]
     work_dir: Path
     manifest_path: Path
     encryption_key_used: str
@@ -73,14 +75,14 @@ class SevenZipService:
         self._run_7z(source_path=source_path, archive_path=archive_base, encryption_key=key)
 
         raw_volumes = sorted(raw_dir.glob("payload.7z*"))
-        archive_volumes: list[ArchiveVolume] = []
+        archive_volumes: list[OutgoingVolume] = []
         for idx, raw_path in enumerate(raw_volumes, start=1):
             outgoing_name = build_hashed_volume_name(display_name, idx)
             outgoing_path = outgoing_dir / outgoing_name
             shutil.copy2(raw_path, outgoing_path)
             raw_path.unlink()
             archive_volumes.append(
-                ArchiveVolume(
+                OutgoingVolume(
                     part_number=idx,
                     outgoing_path=outgoing_path,
                     outgoing_file_name=outgoing_name,
@@ -126,7 +128,7 @@ class SevenZipService:
         source_path: Path,
         display_name: str,
         source_item_id: str | None,
-        volumes: list[ArchiveVolume],
+        volumes: list[OutgoingVolume],
     ) -> None:
         payload = {
             "source_path": str(source_path),

@@ -215,7 +215,7 @@ Checkpoint:
 **Implementation status**
 
 - `src/infrastructure/archive/seven_zip_service.py`: `SevenZipService.archive(source_path, output_dir, display_name, ...)` runs `7z` with `-t7z -mhe=on -v1999m`, produces volumes in `raw/`, copies each to `outgoing/` with hashed name, then immediately deletes the raw volume. Writes `volume_manifest.json`.
-- `ArchiveVolume` carries `outgoing_path`, `outgoing_file_name` (no `raw_path` — raw file is deleted after copy).
+- `OutgoingVolume` carries `outgoing_path`, `outgoing_file_name` (no `raw_path` — raw file is deleted after copy).
 - `build_hashed_volume_name(display_name, part_number)` hashes `display_name` (not `source_path.name`).
 - `AppConfig.archive_cache_dir` reads `ARCHIVE_CACHE_DIR` from environment (default `/tmp/telegram_uploader`).
 - Docker image installs **`p7zip-full`** so `7z` is available in app and worker containers.

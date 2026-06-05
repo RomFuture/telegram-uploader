@@ -1,6 +1,6 @@
 from infrastructure.archive.seven_zip_service import (
     ArchivePipelineResult,
-    ArchiveVolume,
+    OutgoingVolume,
     SevenZipError,
     SevenZipService,
     build_hashed_volume_name,
@@ -9,7 +9,7 @@ from infrastructure.archive.seven_zip_service import (
 
 __all__ = [
     "ArchivePipelineResult",
-    "ArchiveVolume",
+    "OutgoingVolume",
     "SevenZipError",
     "SevenZipService",
     "build_hashed_volume_name",
