@@ -22,7 +22,7 @@ def test_initial_migration_exists() -> None:
     assert all(path.parent.name == "migrations" for path in migration_files)
 
 
-def test_display_name_migration_exists() -> None:
+def test_align_schema_migration_exists() -> None:
     migration_files = list_migration_files()
     file_names = {path.name for path in migration_files}
-    assert "0002_add_display_name.sql" in file_names
+    assert "0002_align_schema_with_domain.sql" in file_names

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS source_items (
     id UUID PRIMARY KEY,
     session_id UUID NOT NULL REFERENCES upload_sessions(id) ON DELETE CASCADE,
     source_path TEXT NOT NULL,
+    display_name TEXT NOT NULL,
     status TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL
 );
@@ -17,9 +18,7 @@ CREATE TABLE IF NOT EXISTS source_items (
 CREATE TABLE IF NOT EXISTS archive_volumes (
     id UUID PRIMARY KEY,
     source_item_id UUID NOT NULL REFERENCES source_items(id) ON DELETE CASCADE,
-    provider_name TEXT,
     file_name TEXT NOT NULL,
-    provider_file_name TEXT,
     local_path TEXT NOT NULL,
     part_number INTEGER NOT NULL,
     status TEXT NOT NULL,

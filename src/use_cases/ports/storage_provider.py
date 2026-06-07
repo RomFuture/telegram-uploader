@@ -1,18 +1,13 @@
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from use_cases.dto import (
-    ClassifiedProviderError,
-    ProviderFileInfo,
-    ProviderLimits,
-    UploadResult,
-)
+from use_cases.dto import ClassifiedProviderError, ProviderFileInfo, ProviderLimits, UploadResult
 
 
 @runtime_checkable
 class StorageProviderPort(Protocol):
-    def healthcheck(self) -> bool:
-        """Return True when provider is reachable and credentials are valid."""
+    def healthcheck(self, remote_target: str) -> bool:
+        """Return True when provider is reachable and target is accessible."""
 
     def upload_file(self, local_path: Path, remote_target: str, display_name: str) -> UploadResult:
         """Upload a file and return provider identifiers needed for restore."""
@@ -30,3 +25,6 @@ class StorageProviderPort(Protocol):
 
     def provider_limits(self) -> ProviderLimits:
         """Return declared provider limits (size/rate/download capabilities)."""
+
+
+MessageProvider = StorageProviderPort

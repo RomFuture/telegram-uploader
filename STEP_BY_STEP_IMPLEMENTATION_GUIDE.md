@@ -11,7 +11,7 @@ Build a Linux desktop application that stores files through messenger providers.
 - `v1` real provider: Telegram only.
 - Architecture: provider-agnostic core (`StorageProviderPort`), Telegram as first adapter.
 - Data flow target:
-  - `Linux GUI -> App Backend Receiver -> ApplicationUseCases -> Celery Queue/Worker -> PostgreSQL -> Messenger`.
+  - `Linux GUI -> backend_receiver -> infrastructure.BackupFacade -> use_cases -> Celery Queue/Worker -> PostgreSQL -> Messenger`.
 - Grouping logic is managed in the app GUI, not via Telegram topics.
 - Parallel pipeline is required: archiving, upload, cleanup in overlap for different source items.
 
@@ -55,8 +55,8 @@ Write these rules in your internal spec first and treat them as non-negotiable:
    - `src/domain` — center
    - `src/use_cases` — use cases + ports + DTOs (middle ring)
    - `src/infrastructure` — DB, Celery, 7z, Telegram adapters
-   - `src/presentation` — GUI (shell)
-   - `src/application` — bootstrap / wiring (outer Application shell)
+   - `src/application` — GUI + `backend_receiver` (прослойка к infrastructure)
+   - `src/infrastructure` — `bootstrap`, `BackupFacade`, adapters, worker
 4. Add quality baseline:
    - Linter
    - Formatter
@@ -117,7 +117,7 @@ Checkpoint:
 - `docker-compose.yml`: `app`, `postgres`, `redis`, `telegram-bot-api`, plus **four Celery worker services** (see section 8).
 - `Dockerfile`: builds the Python image; installs the package in editable mode with dev tools.
 - `src/infrastructure/config.py`: loads DSN/URLs from environment (`POSTGRES_*`, `REDIS_*`, `TELEGRAM_*`); includes `archive_cache_dir` from `ARCHIVE_CACHE_DIR` (default `/tmp/telegram_uploader`).
-- `src/application/bootstrap.py`: loads config, **applies DB migrations**, **pings Redis**, logs to stdout; runnable as `python -m application.bootstrap`.
+- `src/application/bootstrap.py` *(tech debt)*: migrations + Redis ping; **target:** `src/infrastructure/bootstrap.py` + `facade.py`, entrypoint `python -m infrastructure.bootstrap`.
 - `.env.example`: placeholders for DB, Redis, Telegram, `ARCHIVE_ENCRYPTION_KEY`, `ARCHIVE_CACHE_DIR`.
 
 Checkpoint:
@@ -130,27 +130,25 @@ Checkpoint:
    - `upload_sessions`
    - `source_items`
    - `archive_volumes`
-2. Add `display_name` to `source_items`:
+2. `source_items.display_name`:
    - Captured at enqueue time from the original filename.
    - Used by GUI to show the original name independently of `source_path`.
-3. Ensure provider-agnostic fields exist:
-   - `provider_name`
+3. `archive_volumes` restore metadata (matches `domain.models.ArchiveVolume`):
    - `external_file_id`
    - `external_message_id`
-   - `provider_file_name`
    - `provider_download_ref`
-3. Add indexes:
+4. Add indexes:
    - By session
    - By status
    - By provider IDs where needed
-4. Add migration workflow and rollback strategy.
+5. Add migration workflow and rollback strategy.
 
 **Implementation status**
 
 - `src/infrastructure/db/migrations/0001_initial.sql`: base tables (`upload_sessions`, `source_items`, `archive_volumes`) + indexes.
-- `src/infrastructure/db/migrations/0002_add_display_name.sql`: `ALTER TABLE source_items ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`.
+- `src/infrastructure/db/migrations/0002_align_schema_with_domain.sql`: idempotent alignment for older DBs (`display_name`, drop unused provider columns).
 - `src/infrastructure/db/migrate.py`: lists ordered `*.sql` files and **`apply_migrations(dsn)`** applies pending files, recording versions in table `schema_migrations`.
-- `src/application/bootstrap.py` runs **`apply_migrations`** on startup (requires PostgreSQL reachable).
+- Bootstrap runs **`apply_migrations`** on startup (today: `application.bootstrap`; target: `infrastructure.bootstrap`).
 - Repository implementations (CRUD) are **not** wired yet.
 
 Checkpoint:
@@ -256,13 +254,13 @@ Checkpoint:
 
 ## 9. App Backend Receiver + Use Cases
 
-1. Implement backend receiver endpoints/commands for GUI:
+1. Implement `application/backend_receiver.py` — translator for GUI:
    - start session
    - pause/stop
    - enqueue source items
    - restore request
-2. Wire receiver to `ApplicationUseCases`.
-3. Keep all business decisions in use-case layer:
+2. Wire receiver to `infrastructure.facade.BackupFacade` only (not `use_cases` directly).
+3. Keep all business decisions in use-case layer (invoked by facade):
    - queue policies
    - validation
    - lifecycle transitions

@@ -6,21 +6,21 @@
 
 ## 1) Базовая архитектура
 
-Проект следует Onion Architecture: зависимости идут к центру.
+Проект следует **линейному стеку слоёв** (см. [docs/ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md)): запрос вниз `application → infrastructure → use_cases → domain`.
 
 | Слой | Назначение | Что не должно попадать в слой |
 |------|------------|--------------------------------|
 | `domain` | Сущности, статусы, инварианты, доменные ошибки | SQL, HTTP, детали Telegram/Max/VK API |
-| `use_cases` | Use cases: backup, restore, retry, завершение сессии; порты | Конкретные SDK/клиенты провайдеров |
-| `application` | Shell: bootstrap, wiring (composition root) | Бизнес-правила backup |
-| `infrastructure` | Реализация портов: БД, 7z, Celery worker, провайдерные адаптеры | Бизнес-правила, завязанные на UI |
-| `presentation` | Linux UI/TUI, команды пользователя, прогресс | Логика ретраев, транзакций, оркестрации |
+| `use_cases` | Use cases: backup, restore, retry; порты; persistence-записи | Конкретные SDK/клиенты, SQL, Celery |
+| `infrastructure` | `bootstrap`, `BackupFacade`, реализация портов: БД, 7z, Celery, провайдеры | Бизнес-правила lifecycle, UI |
+| `application` | GUI (English-only) + `backend_receiver` (прослойка → `infrastructure.facade`) | `use_cases`, `domain`, SQL, Celery |
+| `presentation` | *(удалить)* — дубль `application/gui/` | — |
 
 ## 2) Контракт провайдера хранения
 
 Порт `StorageProviderPort` (возможное имя `MessageProvider`) задает минимальный API, который нужен ядру:
 
-- `healthcheck(credentials, target)` — проверить подключение и права.
+- `healthcheck(remote_target)` — проверить подключение, валидность credentials (в конфиге адаптера) и доступ к целевой группе/каналу.
 - `upload_file(local_path, remote_target, display_name)` — загрузить файл и вернуть `external_file_id`, `external_message_id`, метаданные.
 - `get_file_info(external_file_id)` — получить данные для скачивания.
 - `download_file(file_info, dest_path, resume)` — скачать/докачать файл.
@@ -29,9 +29,45 @@
 
 Это обязательный контракт для всех будущих адаптеров.
 
+**Текущая реализация (baseline):**
+
+- Контракт: `src/use_cases/ports.py` — `StorageProviderPort` (алиас `MessageProvider`).
+- Адаптер `v1`: `TelegramProviderV1` в том же файле; `infrastructure/providers/telegram_provider.py` — re-export для обратной совместимости.
+- DTO порта: `src/use_cases/dto.py` (`UploadResult`, `ProviderFileInfo`, `ProviderLimits`, `ClassifiedProviderError`).
+
+## 2.1) Слой persistence (репозитории)
+
+**Зачем:** use cases и worker работают с доменными dataclass (`Session`, `SourceItem`, `ArchiveVolume`), не зная SQL и схему таблиц. Репозиторий — прослойка «домен ↔ БД».
+
+**Разделение по файлам:**
+
+| Файл | Роль |
+|------|------|
+| `src/use_cases/repositories.py` | `@dataclass` репозитории и фабрика `Repositories.from_dsn(dsn)` — публичный API для сохранения/чтения |
+| `src/infrastructure/db/orm.py` | SQLAlchemy ORM-модели строк БД (`UploadSessionRow`, `SourceItemRow`, `ArchiveVolumeRow`) |
+| `src/infrastructure/db/mappers.py` | Явный маппинг `upload_session_row_to_domain` / `domain_to_upload_session_row` (и аналоги для остальных сущностей) |
+| `src/infrastructure/db/engine.py` | `build_db_session_factory`, `db_session_scope` (транзакции commit/rollback) |
+| `src/infrastructure/db/migrations/*.sql` | Источник истины для схемы таблиц (как и раньше) |
+
+**Правила:**
+
+1. В коде приложения **не писать сырой SQL** — только SQLAlchemy ORM и `select()` в репозиториях.
+2. Доменные модели живут в `domain/`; ORM-строки **не отдаются** наружу репозитория.
+3. Репозитории — `frozen` dataclass с инжектируемой `db_session_factory`, без ручных `__init__`.
+4. Имена мапперов — явные (`*_row_to_domain`), не «внутренние» хелперы с `_`.
+
+**Пример wiring** (в `infrastructure/bootstrap.py` → `BackupFacade`):
+
+```python
+facade = build_facade(cfg)
+facade.enqueue_file(session_id, path, display_name)  # внутри: use case + repos
+```
+
+**Статус:** CRUD для трёх сущностей и unit-тесты мапперов готовы. **Дальше:** `infrastructure/facade.py`, перенос bootstrap из `application/`; integration-тесты с PostgreSQL.
+
 ## 3) Telegram-specific границы в v1
 
-В `v1` только `TelegramProvider` реализует `StorageProviderPort`.
+В `v1` только `TelegramProviderV1` реализует `StorageProviderPort` (см. `src/use_cases/ports.py`).
 
 Telegram-специфика, которая должна оставаться только в адаптере:
 
@@ -51,21 +87,22 @@ Telegram-специфика, которая не должна утекать в 
 
 ```mermaid
 flowchart TB
-  ui[LinuxGUI] --> backend[AppBackendReceiver]
-  backend --> app[ApplicationUseCases]
-  app --> queue[CeleryQueue]
-  app --> db[(PostgreSQL)]
+  ui[LinuxGUI] --> receiver[backend_receiver]
+  receiver --> facade[BackupFacade]
+  facade --> uc[use_cases]
+  uc --> queue[CeleryQueue]
+  uc --> db[(PostgreSQL)]
   queue --> worker[CeleryWorker]
-  worker --> archive[SevenZipService]
-  worker --> providerPort[StorageProviderPort]
-  worker --> db
+  worker --> facade
+  facade --> archive[SevenZipService]
+  facade --> providerPort[StorageProviderPort]
   providerPort --> tg[TelegramProviderV1]
   tg --> messenger[TelegramGroupNoTopics]
   messenger -->|"file_id/message_id/download_ref"| db
   worker --> redis[(Redis)]
 ```
 
-Гарантия архитектуры: GUI работает через backend-приемник команд приложения, а `Celery` и `Redis` обеспечивают отдельный сервисный контур фоновой обработки без переноса бизнес-правил из `use_cases`. После успешной отправки мессенджерные идентификаторы и ссылка/референс для скачивания обязательно фиксируются в БД для restore.
+Гарантия архитектуры: GUI → `backend_receiver` → `infrastructure.facade` → `use_cases`; `application` не импортирует use cases напрямую. `Celery` и `Redis` — фоновый контур в `infrastructure`. Бизнес-правила остаются в `use_cases`. После upload идентификаторы и `provider_download_ref` фиксируются в БД для restore.
 
 ## 5) Негласные правила реализации
 
@@ -99,10 +136,17 @@ flowchart TB
 ### Этап 2. БД и миграции
 
 - Таблицы: `upload_sessions`, `source_items`, `archive_volumes`.
-- Поля для provider-agnostic учета: `provider_name`, `external_file_id`, `external_message_id`, `provider_file_name`, `provider_download_ref`.
+- Поля `archive_volumes` для restore (как в `domain.models.ArchiveVolume`): `external_file_id`, `external_message_id`, `provider_download_ref`. `provider_name` / `provider_file_name` — только в `UploadResult` (DTO), не в таблице.
 - Индексы по сессии, статусам и provider-полям.
+- Доступ к данным через **SQLAlchemy** (см. §2.1), не через сырой SQL в use cases.
 
-**Готово, когда:** миграции воспроизводимы с нуля.
+**Статус реализации:**
+
+- Миграции: `src/infrastructure/db/migrations/0001_initial.sql`, `0002_align_schema_with_domain.sql`; раннер `apply_migrations` в `src/infrastructure/db/migrate.py`.
+- ORM + мапперы + dataclass-репозитории: §2.1.
+- Зависимость: `sqlalchemy>=2.0.40` (в паре с `psycopg`) в `pyproject.toml`.
+
+**Готово, когда:** миграции воспроизводимы с нуля; репозитории подключены к worker/use cases и проходят integration-тест с PostgreSQL.
 
 ### Этап 3. Конфигурация
 
@@ -115,8 +159,14 @@ flowchart TB
 ### Этап 4. Порт и Telegram-адаптер
 
 - Ввести `StorageProviderPort` в `use_cases`.
-- Реализовать `TelegramProvider` в `infrastructure`.
-- Нормализовать ошибки и лимиты через общий контракт.
+- Реализовать `TelegramProviderV1` (HTTP к локальному Bot API, `multipart/form-data` для `sendDocument`).
+- Нормализовать ошибки и лимиты через общий контракт (`ClassifiedProviderError`, `ProviderLimits`).
+
+**Статус реализации:**
+
+- Контракт и адаптер: `src/use_cases/ports.py` (`StorageProviderPort`, `TelegramProviderV1`).
+- Contract-тесты: `tests/test_provider_contract.py`, `tests/test_telegram_provider.py`.
+- Live upload в реальную группу — ещё не зафиксирован как пройденный smoke.
 
 **Готово, когда:** тестовый файл отправляется в Telegram через абстракцию порта.
 
@@ -160,7 +210,7 @@ flowchart TB
 | Уровень | Что проверяет | Инструменты |
 |---------|---------------|-------------|
 | Unit | domain/use_cases без внешних зависимостей | `pytest`, фейки портов |
-| Integration | БД, миграции, Celery-задачи, 7z интеграция | `pytest`, контейнеры/compose |
+| Integration | БД, миграции, репозитории (SQLAlchemy), Celery-задачи, 7z интеграция | `pytest`, контейнеры/compose |
 | Provider contract | соответствие адаптера контракту `StorageProviderPort` | общий contract-test suite |
 | Provider-specific | Telegram edge-cases (FloodWait, лимиты, неверная группа/права) | моки HTTP + живой smoke |
 

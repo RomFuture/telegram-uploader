@@ -13,7 +13,6 @@ from use_cases.dto import (
     ProviderLimits,
     UploadResult,
 )
-from use_cases.ports import StorageProviderPort
 
 
 class TelegramProviderError(Exception):
@@ -21,7 +20,7 @@ class TelegramProviderError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
-class TelegramProviderV1(StorageProviderPort):
+class TelegramProviderV1:
     bot_token: str
     base_url: str
     request_timeout_seconds: float = 30.0
@@ -30,12 +29,13 @@ class TelegramProviderV1(StorageProviderPort):
     def _api_url(self, method: str) -> str:
         return f"{self.base_url.rstrip('/')}/bot{self.bot_token}/{method}"
 
-    def healthcheck(self) -> bool:
+    def healthcheck(self, remote_target: str) -> bool:
         try:
-            payload = self._request_json("getMe", {})
+            me_payload = self._request_json("getMe", {})
+            chat_payload = self._request_json("getChat", {"chat_id": remote_target})
         except Exception:
             return False
-        return bool(payload.get("ok"))
+        return bool(me_payload.get("ok")) and bool(chat_payload.get("ok"))
 
     def upload_file(self, local_path: Path, remote_target: str, display_name: str) -> UploadResult:
         body, content_type = self._build_send_document_multipart(

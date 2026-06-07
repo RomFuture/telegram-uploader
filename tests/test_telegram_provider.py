@@ -1,7 +1,7 @@
 from urllib import error
 
-from use_cases.dto import ProviderErrorCategory
 from infrastructure.providers.telegram_provider import TelegramProviderV1
+from use_cases.dto import ProviderErrorCategory
 
 
 def test_telegram_provider_classifies_rate_limit_error() -> None:

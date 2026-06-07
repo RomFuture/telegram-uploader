@@ -7,12 +7,12 @@ from use_cases.dto import (
     ProviderLimits,
     UploadResult,
 )
-from use_cases.ports import StorageProviderPort
+from use_cases.ports.storage_provider import StorageProviderPort
 
 
 class DummyProvider:
-    def healthcheck(self) -> bool:
-        return True
+    def healthcheck(self, remote_target: str) -> bool:
+        return bool(remote_target)
 
     def upload_file(self, local_path: Path, remote_target: str, display_name: str) -> UploadResult:
         return UploadResult(

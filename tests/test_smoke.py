@@ -1,4 +1,4 @@
-from use_cases.ports import StorageProviderPort
+from use_cases.ports.storage_provider import StorageProviderPort
 
 
 def test_storage_provider_port_is_runtime_protocol() -> None:

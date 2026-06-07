@@ -6,7 +6,8 @@ Requires-Python: >=3.12
 Description-Content-Type: text/markdown
 Requires-Dist: celery==5.4.0
 Requires-Dist: redis==5.2.1
-Requires-Dist: psycopg[binary]==3.2.4
+Requires-Dist: psycopg[binary]>=3.2.4
+Requires-Dist: sqlalchemy>=2.0.40
 Provides-Extra: dev
 Requires-Dist: mypy==1.15.0; extra == "dev"
 Requires-Dist: pytest==8.3.5; extra == "dev"
@@ -97,11 +98,11 @@ flowchart TB
 
 - Зафиксированы обязательные продуктовые правила в `docs/INTERNAL_SPEC.md`.
 - Добавлен Python baseline в `pyproject.toml` + pinned dev lock в `requirements-dev.lock`.
-- Подготовлена слоистая структура `src/domain`, `src/application`, `src/infrastructure`, `src/presentation`, `src/composition`.
+- Подготовлена слоистая структура (см. [docs/ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md)): `application` (GUI + `backend_receiver`) → `infrastructure` (`bootstrap`, `BackupFacade`) → `use_cases` → `domain`. Целевой entrypoint: `python -m infrastructure.bootstrap`.
 - Добавлены базовые контракты:
-  - `StorageProviderPort` в `src/application/ports.py`;
-  - DTO результатов/ошибок провайдера в `src/application/dto.py`;
-  - repository-порты в `src/application/repositories.py`;
+  - `StorageProviderPort` в `src/use_cases/ports.py`;
+  - DTO результатов/ошибок провайдера в `src/use_cases/dto.py`;
+  - repository-порты в `src/use_cases/repositories.py`;
   - доменные модели/статусы в `src/domain/models.py`.
 - Добавлены smoke/contract skeleton tests в `tests/`.
 
@@ -124,6 +125,17 @@ flowchart TB
 - Имена томов в Telegram содержат хешированное пользовательское имя файла (стабильная часть имени для группировки и приватности).
 - Секреты (токены, пароли архивов) не хранятся в git и не пишутся в открытом виде в логах.
 - Восстановление возможно по данным БД и идентификаторам, сохраненным провайдером.
+
+## Roadmap — logging & observability (v1)
+
+- **Session log directory in the project:** persist operational logs under a dedicated path (e.g. `logs/sessions/<session_id>/` — task start/finish/retry, provider errors, restore milestones). Complement stdout/Docker logs; redact secrets; keep `logs/` out of git (`.gitignore`).
+
+## Roadmap — post-v1 live provider verification (Telegram)
+
+- **После релиза v1:** прогнать реальные upload/restore тесты (бот, целевая группа, локальный `telegram-bot-api`).
+- Зафиксировать, **через что Telegram отдаёт файл при скачивании** (цепочка Bot API: `sendDocument` → сохранённые id → `getFile` → URL/путь).
+- **Проверить схему `provider_download_ref`:** значение в `UploadResult` (например `file_unique_id`) vs обновление в `ProviderFileInfo` (`file_path`); достаточно ли `external_file_id` для restore; нужно ли поле в DTO/БД или схема нерабочая/избыточная.
+- По результатам обновить адаптер, `INTERNAL_SPEC.md`, DTO и миграции при необходимости.
 
 ## Roadmap после v1
 

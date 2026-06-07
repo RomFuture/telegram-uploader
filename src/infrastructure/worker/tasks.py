@@ -42,5 +42,9 @@ def cleanup_volume(self: Task, archive_volume_id: str) -> dict[str, str]:
 @celery_app.task(name="infrastructure.worker.tasks.restore_volume", bind=True)
 def restore_volume(self: Task, archive_volume_id: str) -> dict[str, str]:
     """Network-heavy: provider download/restore (future)."""
-    logger.info("restore_volume task_id=%s archive_volume_id=%s", self.request.id, archive_volume_id)
+    logger.info(
+        "restore_volume task_id=%s archive_volume_id=%s",
+        self.request.id,
+        archive_volume_id,
+    )
     return {"stage": "restore", "archive_volume_id": archive_volume_id, "status": "stub"}

@@ -83,7 +83,7 @@ flowchart TB
 
 - Зафиксированы обязательные продуктовые правила в `docs/INTERNAL_SPEC.md`.
 - Добавлен Python baseline в `pyproject.toml` + pinned dev lock в `requirements-dev.lock`.
-- Подготовлена слоистая структура (см. схему слоёв): `src/domain`, `src/use_cases`, `src/infrastructure`, `src/presentation`, `src/application` (shell/bootstrap).
+- Подготовлена слоистая структура (см. [docs/ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md)): `application` (GUI + `backend_receiver`) → `infrastructure` (`bootstrap`, `BackupFacade`) → `use_cases` → `domain`. Целевой entrypoint: `python -m infrastructure.bootstrap`.
 - Добавлены базовые контракты:
   - `StorageProviderPort` в `src/use_cases/ports.py`;
   - DTO результатов/ошибок провайдера в `src/use_cases/dto.py`;
