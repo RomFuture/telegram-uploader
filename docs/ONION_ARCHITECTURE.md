@@ -15,7 +15,7 @@
 
 ## 1) Принцип: линейный стек слоёв
 
-Проект строится как **строгий линейный стек**: в центре — `domain` (физически `use_cases/domain/`), снаружи — остальной `use_cases`, затем `infrastructure`, `application`, `observation`. Это не forked-onion (где `application` и `infrastructure` оба смотрят в `use_cases` параллельно), а **цепочка соседей**.
+Проект строится как **строгий линейный стек**: в центре — `domain` (`src/domain/`), затем `use_cases`, `infrastructure`, `application`, `observation`. Это не forked-onion (где `application` и `infrastructure` оба смотрят в `use_cases` параллельно), а **цепочка соседей**.
 
 ### Правило соседних слоёв (главное)
 
@@ -42,15 +42,15 @@ use_cases  →  infrastructure  →  application
 
 | Слой | Импортирует (сосед внутрь) | Вызывается из (сосед снаружи) |
 |------|---------------------------|--------------------------------|
-| `use_cases/domain` (ядро) | только stdlib | остальной `use_cases` |
-| `use_cases` (мозг) | `use_cases.domain` | `infrastructure` |
+| `domain` (ядро) | только stdlib | `use_cases` |
+| `use_cases` (мозг) | `domain` | `infrastructure` |
 | `infrastructure` | `use_cases` | `application`, Celery worker entrypoints |
 | `application` | `infrastructure` | `observation`, пользователь (GUI) |
 | `observation` | любой слой | — (снаружи runtime: тесты, CI, health) |
 
-**Критично:** `infrastructure` **не** импортирует `use_cases.domain`. ORM-строки маппятся в **persistence-записи** (`use_cases/persistence.py`), а `use_cases` переводит записи ↔ доменные сущности.
+**Критично:** `infrastructure` **не** импортирует `domain`. ORM-строки маппятся в **persistence-записи** (`use_cases/persistence.py`), а `use_cases` переводит записи ↔ доменные сущности (`use_cases/mappers.py`, `use_cases/repositories/loading.py`).
 
-**Критично:** `application` **не** импортирует `use_cases` и `use_cases.domain`. GUI и `backend_receiver` ходят только в **`infrastructure.facade`**.
+**Критично:** `application` **не** импортирует `use_cases` и `domain`. GUI и `backend_receiver` ходят только в **`infrastructure.facade`**.
 
 Слой взаимодействует с соседом через **публичный API** (`BackupFacade`, порты, persistence-записи). Внутреннему слою **плевать**, кто вызывает — GUI, Celery worker или тест: для него любой вызов это просто **вводные данные**.
 
@@ -60,19 +60,20 @@ flowchart TB
   application[application]
   infrastructure[infrastructure]
   use_cases[use_cases]
-  domainSub["use_cases/domain"]
+  domain[domain]
+  use_cases[use_cases]
 
   observation --> application
   application --> infrastructure
   infrastructure --> use_cases
-  use_cases --> domainSub["use_cases/domain"]
+  use_cases --> domain
 ```
 
 ### Разрешённые зависимости
 
 | Откуда | Куда | Как |
 |--------|------|-----|
-| `use_cases` | `use_cases.domain` | бизнес-оркестрация; маппинг persistence-запись ↔ домен |
+| `use_cases` | `domain` | бизнес-оркестрация; маппинг persistence-запись ↔ домен |
 | `infrastructure` | `use_cases` | `BackupFacade`, реализации портов, wiring use cases, ORM ↔ `persistence.*` |
 | `application` | `infrastructure` | `backend_receiver` → `BackupFacade`; GUI не знает про use cases |
 | `observation` | любой слой | тесты, линтеры, health-check **снаружи** runtime |
@@ -83,11 +84,10 @@ flowchart TB
 |-------------|-------------------|
 | `application → use_cases` | UI перепрыгивает через `infrastructure` |
 | `application → domain` | UI перепрыгивает через `infrastructure` и `use_cases` |
-| `infrastructure → use_cases.domain` | адаптер перепрыгивает через `use_cases`; infrastructure знает только `persistence` и порты |
-| `use_cases → infrastructure` | сосед внутрь — только `use_cases.domain`; wiring делает `infrastructure` при вызове |
+| `infrastructure → domain` | адаптер перепрыгивает через `use_cases` |
+| `use_cases → infrastructure` | wiring делает `infrastructure` при вызове use cases |
 | `use_cases → application` | мозг не знает про UI |
-| `use_cases.domain → *` (кроме stdlib) | ядро не знает о портах, persistence, infrastructure |
-| импорт `use_cases.domain` вне пакета `use_cases` | домен не торчит наружу мозга |
+| `domain → *` (кроме stdlib) | ядро не знает о портах, persistence, infrastructure, use_cases |
 | `infrastructure → application` | руки не знают про UI |
 | `use_cases → sqlalchemy`, `urllib`, `celery` | I/O-детали не в мозге |
 | Любой слой → слой **выше** себя | нарушение соседства |
@@ -124,12 +124,13 @@ flowchart LR
     DB[SqlAlchemyRepos]
     TG[TelegramProviderV1]
   end
+  subgraph domain_layer [domain]
+    Models[models.py]
+    Actions[actions.py scenarios.py]
+  end
   subgraph use_cases_layer [use_cases]
     UC[EnqueueSourceItemUseCase]
-    subgraph uc_domain [use_cases/domain]
-      Models[models.py]
-      Mappers[record_to_domain mappers]
-    end
+    Mappers[mappers.py]
     UC --> Mappers
     Mappers --> Models
   end
@@ -161,9 +162,9 @@ flowchart LR
 
 Описание идёт **от ядра к периферии** (domain → … → observation).
 
-### Слой 1 — `domain` (центр, внутри `use_cases`)
+### Слой 1 — `domain` (центр)
 
-**Логически** — самый внутренний слой («бумажная работа»). **Физически** — подпапка **`use_cases/domain/`**, отдельного пакета `src/domain/` **нет**. В домене нет функций оркестрации — только модели, статусы и (позже) доменные ошибки.
+**Роль:** самый внутренний слой. Top-level пакет [`src/domain/`](../src/domain/). Нет оркестрации и I/O — модели, статусы, guards, actions, scenarios.
 
 | Сущность | Назначение |
 |----------|------------|
@@ -173,37 +174,38 @@ flowchart LR
 
 Статусы: `SessionStatus`, `SourceItemStatus`, `ArchiveVolumeStatus`.
 
-**Пакет (цель):** `use_cases/domain/models.py`, `use_cases/domain/errors.py`
+**Пакет:** [`src/domain/`](../src/domain/) — единая точка входа через `__init__.py`:
+
+| Модуль | Роль |
+|--------|------|
+| `models.py` | entity + enums + internal `.create()` |
+| `errors.py` | `DomainError` + factory classmethods |
+| `actions.py` | `create_*`, `ensure_*`, `mark_*`, `is_*` |
+| `guards.py` | `require_*` — not-found (via `use_cases/repositories/loading.py`) |
+| `scenarios.py` | `prepare_*` — pipeline entry points |
+
+Публичный API: `create_*`, `mark_*`, `prepare_*`, `is_*`, status enums, `DomainError`.
 
 | Можно | Нельзя |
 |-------|--------|
 | `dataclass`, `Enum`, чистые функции над моделями | SQL, HTTP, SQLAlchemy, Celery, Telegram API |
-| импорт только stdlib | импорт `ports`, `persistence`, `backup`, `infrastructure`, `application` |
-| | импорт снаружи пакета `use_cases` (кроме тестов) |
+| импорт только stdlib | импорт `use_cases`, `ports`, `persistence`, `infrastructure`, `application` |
 
-**Готовность:** модели есть в [`src/domain/`](../src/domain/) — **техдолг:** перенести в `use_cases/domain/`.
+**Готовность:** ✅ [`src/domain/`](../src/domain/).
 
 ---
 
-### Слой 2 — `use_cases` (мозг, пакет целиком)
+### Слой 2 — `use_cases` (мозг)
 
-**Роль:** принимает намерение пользователя («забэкапить файл», «восстановить сессию»), валидирует, режет на подзадачи, оркестрирует модули **через порты**. Не выполняет I/O сам.
-
-Примеры будущих классов:
-
-- `EnqueueSourceItemUseCase` — пользователь добавил файл в очередь
-- `StartBackupPipelineUseCase` — запуск конвейера archive → upload → cleanup
-- `RestoreSessionUseCase` — скачать тома и распаковать
+**Роль:** оркестрация сценариев через порты. Сосед снаружи для `domain` — импортирует `import domain as domain`.
 
 **Пакет:** [`src/use_cases/`](../src/use_cases/)
 
-Пакет `use_cases` **включает** ядро `use_cases/domain/` (слой 1) и оркестрацию вокруг него (слой 2). Сосед снизу для `backup/`, `ports/`, `repositories/` — всегда `use_cases.domain`.
-
 | Можно | Нельзя |
 |-------|--------|
-| `from use_cases.domain.models import Session` в use case-классах | `from domain import ...` (старый top-level пакет) |
-| `use_cases/domain/mappers.py` — record ↔ доменные модели | `import use_cases.domain` из `infrastructure` / `application` |
-| `use_cases/domain/transitions.py` — (optional) чистые хелперы смены статусов | |
+| `import domain as domain` в use case-классах | `from domain.models import ...` в `backup/` / `session/` / `restore/` |
+| `use_cases/mappers.py`, `repositories/loading.py` | `import domain` из `infrastructure` / `application` |
+| `domain.require_*`, `domain.ensure_*`, `domain.create_*` | `raise *NotFound` / `raise InvalidStatusTransition` в use cases |
 | `persistence.py` — записи для контракта с infrastructure | `infrastructure.*`, `application.*` |
 | `Protocol` (порты репозиториев и сервисов) | SQLAlchemy, `psycopg`, `urllib`, `7z` subprocess |
 | DTO (`UploadResult`, `ProviderFileInfo`, …) | конкретные реализации `TelegramProviderV1` |
@@ -280,7 +282,7 @@ flowchart LR
 
 ## 3) Структура каталогов
 
-Слои — **параллельные пакеты** в `src/`, кроме ядра: **`domain` живёт только как `use_cases/domain/`** (подпапка мозга). Логическая глубина задаётся **правилами импортов**, не физической вложенностью всего стека в одну директорию.
+Слои — **параллельные top-level пакеты** в `src/` (`domain`, `use_cases`, `infrastructure`, `application`). Логическая глубина задаётся **правилами импортов**.
 
 При чтении документации порядок слоёв: **domain → use_cases → infrastructure → application → observation**.
 
@@ -288,13 +290,18 @@ flowchart LR
 
 ```
 src/
+  domain/                     # слой 1 (ядро)
+    models.py                 # Session, SourceItem, ArchiveVolume + enums
+    errors.py                 # DomainError
+    actions.py                # create_*, ensure_*, mark_*
+    guards.py                 # require_* (internal; via repo loading)
+    scenarios.py              # prepare_* pipeline entry points
+
   use_cases/
-    domain/                   # слой 1 (ядро) — целиком внутри use_cases, без отдельного src/domain/
-      models.py               # Session, SourceItem, ArchiveVolume + enums
-      errors.py               # (future) доменные исключения
-      mappers.py              # persistence.SessionRecord ↔ use_cases.domain.Session / SourceItem / ArchiveVolume
-      transitions.py          # (optional) чистые хелперы смены статусов
-    persistence.py            # SessionRecord, SourceItemRecord, ArchiveVolumeRecord — контракт для infrastructure
+    persistence.py            # SessionRecord, SourceItemRecord, ArchiveVolumeRecord
+    mappers.py                # persistence record ↔ domain entity
+    repositories/
+      loading.py              # get + map + domain guard
     ports/
       storage_provider.py     # StorageProviderPort (Protocol)
       archive_service.py      # (future) ArchiveServicePort
@@ -350,8 +357,8 @@ docs/
 | `src/presentation/` — пустой дубль | удалить; GUI в `application/gui/` |
 | `src/application/bootstrap.py` — composition root не на месте | перенести в `infrastructure/bootstrap.py` + `facade.py` |
 | нет `infrastructure/facade.py` | `BackupFacade` — единая точка входа для application |
-| [`src/domain/`](../src/domain/) — отдельный top-level пакет | перенести в `use_cases/domain/`; удалить `src/domain/` |
-| нет `use_cases/domain/mappers.py` | мапперы record ↔ domain в `use_cases/domain/mappers.py` |
+| ~~`src/domain/` как legacy top-level~~ | **`src/domain/`** — канонический слой 1 ✅ (отделён от `use_cases` с 2025-06) |
+| ~~`use_cases/domain/`~~ | удалён; domain — равноправный пакет |
 | нет use case-классов | `use_cases/backup/`, `restore/`, `session/` |
 
 ---
@@ -365,17 +372,17 @@ docs/
 Репозитории в `use_cases` оперируют **persistence-записями** (`SessionRecord`, …), а не доменными `Session`. Use case внутри себя:
 
 1. читает `SessionRecord` из репозитория;
-2. маппит в `Session` через **`use_cases/domain/mappers.py`** (`from use_cases.domain.models import Session`);
+2. маппит в `Session` через **`use_cases/mappers.py`** (`from domain.models import Session`);
 3. применяет бизнес-правила;
 4. маппит обратно в `SessionRecord` и сохраняет.
 
-`infrastructure/db/sqlalchemy_repositories.py` знает только `use_cases.persistence` и ORM-строки. **Импорт `use_cases.domain` в `infrastructure` запрещён.**
+`infrastructure/db/sqlalchemy_repositories.py` знает только `use_cases.persistence` и ORM-строки. **Импорт `domain` в `infrastructure` запрещён.**
 
 ```mermaid
 flowchart LR
   ORM[ORM Row] -->|"infra mappers"| Record[use_cases.persistence.Record]
-  Record -->|"use_cases/domain/mappers"| Entity[use_cases.domain.Session]
-  Entity -->|"use_cases/domain/mappers"| Record
+  Record -->|"use_cases/mappers"| Entity[use_cases.domain.Session]
+  Entity -->|"use_cases/mappers"| Record
   Record -->|"infra mappers"| ORM
 ```
 
@@ -592,8 +599,8 @@ Observation не заменяет бизнес-логику: он **следит
 
 Документ описывает цель; перенос кода — отдельные задачи.
 
-- [ ] Перенести [`src/domain/models.py`](../src/domain/models.py) → `use_cases/domain/models.py`; удалить пакет `src/domain/`
-- [ ] Ввести `use_cases/persistence.py` + `use_cases/domain/mappers.py` (record ↔ domain); доменные модели только в `use_cases/domain/`
+- [x] `src/domain/` — top-level layer 1 (отделён от `use_cases`)
+- [x] `use_cases/persistence.py` + `use_cases/mappers.py` + `repositories/loading.py` (record ↔ domain)
 - [ ] Разрезать [`src/use_cases/repositories.py`](../src/use_cases/repositories.py) → Protocol в `use_cases/repositories/` + реализация в `infrastructure/db/sqlalchemy_repositories.py`
 - [ ] Перенести `infrastructure/db/mappers.py` на ORM ↔ persistence-запись; убрать любой `import domain` из `infrastructure`
 - [ ] Разрезать [`src/use_cases/ports.py`](../src/use_cases/ports.py) → Protocol в `use_cases/ports/` + `TelegramProviderV1` в `infrastructure/providers/telegram_provider.py`

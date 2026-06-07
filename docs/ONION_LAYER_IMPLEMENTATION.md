@@ -39,6 +39,66 @@ domain → use_cases → infrastructure → application → observation
 
 **Why `application` must not touch `use_cases`:** `backend_receiver` calls `infrastructure.facade.BackupFacade` only; facade wires and invokes use cases internally.
 
+### Package and import conventions
+
+Every layer and subpackage under `src/` is a **proper Python package** with a non-empty `__init__.py`. These rules apply to all layers (`use_cases`, `infrastructure`, `application`, …) and to every nested package inside them (`use_cases/domain/`, `use_cases/backup/`, `infrastructure/db/`, …).
+
+| Rule | Detail |
+|------|--------|
+| **Package entrypoint** | Each directory that is part of the layer layout must contain `__init__.py`. No implicit namespace packages. |
+| **Non-empty `__init__.py`** | An empty `__init__.py` is **not allowed**. Every package declares its public surface here. |
+| **Re-export public API** | Any class, function, or Protocol consumed **outside** that package must be imported and re-exported in the package's `__init__.py`, with an explicit `__all__`. External code imports from the package, not from internal modules. |
+| **Relative imports inside a package** | Modules within the **same** package must import sibling modules with a **relative** import: `from .models import Session`, not `from use_cases.domain.models import Session`. |
+| **Domain purity** | `use_cases/domain/` may import stdlib and sibling modules (`.models`, `.errors`) only — never `use_cases.persistence`, `use_cases.mappers`, or other use-case subpackages. |
+| **Absolute imports across packages** | Code in one subpackage importing from a **sibling** subpackage uses the absolute package path: `from use_cases.domain import Session`, not `from .domain import Session`. Record ↔ domain mappers live in `use_cases/mappers.py`. |
+
+**Example — `use_cases/domain/`**
+
+```python
+# use_cases/domain/guards.py  — sibling import (relative)
+from .errors import SessionNotFound
+from .models import Session
+
+# use_cases/backup/enqueue_source_item.py  — cross-subpackage (absolute)
+import use_cases.domain as domain
+
+item = domain.create_source_item(session_id, source_path, display_name)
+domain.require_source_item(mapped_item, source_item_id)  # raises domain.DomainError
+```
+
+**Example — `use_cases/domain/__init__.py`**
+
+```python
+from .errors import DomainError
+from .guards import require_session, require_source_item
+from .models import Session, SourceItem, ArchiveVolume
+
+__all__ = [
+    "ArchiveVolume",
+    "DomainError",
+    "Session",
+    "SourceItem",
+    "create_session",
+    "create_source_item",
+    "require_session",
+    "require_source_item",
+    # ...
+]
+```
+
+External code imports **only** from `use_cases.domain` — not from `use_cases.domain.models`, `.errors`, `.guards`, or `.transitions`. Use cases catch `domain.DomainError`; internal error subclasses stay inside the package.
+
+**Verification (manual / future CI):**
+
+```bash
+# No empty __init__.py under src/
+find src -name __init__.py -empty
+
+# Sibling modules must not use absolute self-package paths
+# (e.g. use_cases/domain/*.py must not contain "from use_cases.domain.")
+grep -rE "from use_cases\.domain\.(models|errors|mappers)" src/use_cases/domain/
+```
+
 ---
 
 ## Technology stack
@@ -126,8 +186,7 @@ Pinned dev lock: `requirements-dev.lock` (dev extras only).
 
 ```
 src/
-  domain/           models.py, errors.py — pure stdlib
-  use_cases/        persistence.py, domain/mappers.py, repositories/, ports/
+  use_cases/        domain/, persistence, repositories/, ports/, backup/, session/, restore/
   infrastructure/   db/, archive/, providers/, worker/, config.py
   application/      bootstrap.py (migrations + Redis ping)
   presentation/     empty stub (to be removed in Phase 7)
@@ -179,13 +238,14 @@ flowchart TB
   P2[Phase 2 Use cases protocols]
   P3[Phase 3 Infrastructure adapters]
   P4[Phase 4 Use case classes]
+  P4_1[Phase 4.1 Legacy cleanup]
   P5[Phase 5 Worker pipeline]
   P6[Phase 6 Infra bootstrap plus facade]
   P7[Phase 7 Application shell]
   P8[Phase 8 Restore feature]
   P9[Phase 9 Observation]
 
-  P0 --> P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9
+  P0 --> P1 --> P2 --> P3 --> P4 --> P4_1 --> P5 --> P6 --> P7 --> P8 --> P9
 ```
 
 ---
@@ -194,14 +254,14 @@ flowchart TB
 
 | Area | Current state | Target (ONION_ARCHITECTURE) | Fixed in phase |
 |------|---------------|----------------------------|----------------|
-| Domain entities | `src/domain/models.py` + `errors.py` (Phase 1 done) | Same | 1 ✅ |
+| Domain entities | Canonical code in `use_cases/domain/` | Same | 4.1 ✅ |
 | Repository contracts | Protocols in `use_cases/repositories/` on `persistence.*Record` | Same | 2 ✅ |
-| Persistence boundary | ORM ↔ `use_cases.persistence`; `use_cases/domain/mappers.py` for record ↔ domain | Same | 2–3 ✅ |
+| Persistence boundary | ORM ↔ `use_cases.persistence`; `use_cases/mappers.py` for record ↔ domain | Same | 2–3 ✅ |
 | Repository implementations | `infrastructure/db/sqlalchemy_repositories.py` | Same | 3 ✅ |
 | Storage provider port | Protocol in `use_cases/ports/`; HTTP in `infrastructure/providers/` | Same | 2–3 ✅ |
 | Task queue port | `TaskQueuePort` in use_cases; `CeleryTaskQueue` in infrastructure | Same | 2–3 (port ✅, adapter Phase 3) |
 | Archive service port | `ArchiveServicePort` in use_cases; adapter in infrastructure | Same | 2–3 (port ✅, adapter Phase 3) |
-| Use case classes | None | `use_cases/backup/`, `restore/`, `session/` | 4 |
+| Use case classes | `use_cases/backup/`, `restore/`, `session/` | Same | 4 ✅ |
 | Celery tasks | Stubs in `infrastructure/worker/tasks.py` | Thin entrypoints calling use cases | 5 |
 | Bootstrap | `src/application/bootstrap.py` — migrations + ping only | `infrastructure/bootstrap.py` — composition root + `build_facade()` | 6 |
 | BackupFacade | Missing | `infrastructure/facade.py` — public API for application | 6 |
@@ -216,8 +276,11 @@ flowchart TB
 | ~~`use_cases` imports `sqlalchemy`, `infrastructure.db`~~ | — | 2 ✅ |
 | ~~`TelegramProviderV1` HTTP lives in use_cases~~ | — | 2 ✅ |
 | ~~`infrastructure/db/mappers.py` imports `domain`~~ | — | 2 ✅ |
-| `CeleryTaskQueue` / `ArchiveServiceAdapter` missing | `infrastructure/worker/`, `infrastructure/archive/` | 3 |
-| No use case orchestration classes | — | 4 |
+| ~~`CeleryTaskQueue` / `ArchiveServiceAdapter` missing~~ | — | 3 ✅ |
+| ~~No use case orchestration classes~~ | — | 4 ✅ |
+| ~~`src/domain/` still exists; `use_cases/domain/{models,errors}.py` re-export only~~ | — | 4.1 ✅ |
+| ~~`from domain` imports in tests and `use_cases/domain/{factories,mappers,transitions}.py`~~ | — | 4.1 ✅ |
+| ~~`infrastructure/db/__init__.py` aliases protocol names to SQLAlchemy classes~~ | — | 4.1 ✅ |
 | Worker tasks return `{"status": "stub"}` | `src/infrastructure/worker/tasks.py` | 5 |
 | Bootstrap in wrong layer; no facade | `src/application/bootstrap.py` | 6 |
 
@@ -348,7 +411,7 @@ This is the **highest-priority refactor** per ONION_ARCHITECTURE §4 and §7.
 ```
 src/use_cases/
   persistence.py                  # SessionRecord, SourceItemRecord, ArchiveVolumeRecord
-  domain/                         # only subfolder in use_cases that may import src/domain
+  domain/                         # layer 1 core — canonical home for models/errors (Phase 4.1 removes src/domain/)
     mappers.py                    # record ↔ domain
   dto.py                          # unchanged
   repositories/
@@ -547,7 +610,8 @@ assert isinstance(TelegramProviderV1('token', 'http://localhost:8081'), StorageP
 
 ### Current state
 
-- Zero use case classes
+- Use case classes in `session/`, `backup/`, `restore/` — **done**
+- `tests/test_use_cases_backup.py`, `tests/test_use_cases_restore.py` — **done**
 - Ports and DTOs ready after Phases 2–3
 
 ### Target package layout
@@ -604,7 +668,7 @@ From ONION_ARCHITECTURE §4 and [INTERNAL_SPEC.md](INTERNAL_SPEC.md):
 Example skeleton:
 
 ```python
-from use_cases.domain.mappers import domain_to_source_item_record, source_item_create
+from use_cases.mappers import domain_to_source_item_record, source_item_create
 
 @dataclass(frozen=True, slots=True)
 class EnqueueSourceItemUseCase:
@@ -647,6 +711,97 @@ pytest tests/test_use_cases_backup.py tests/test_use_cases_restore.py -v
 - [x] Happy path backup flow works with fakes (enqueue → archive → upload → cleanup)
 - [x] `display_name` test explicitly asserts it is stored as provided, not from path
 - [x] No `infrastructure` or `celery` imports in `src/use_cases/`
+
+---
+
+## Phase 4.1 — Legacy cleanup: physical move (Layer 2c)
+
+**Goal:** Remove **duplicate and shim** artifacts left after Phases 2–4. Code that already *behaves* as onion must *live* in the target paths only — no parallel `src/domain/` package, no re-export proxies, no stale import paths.
+
+Phases 2–4 migrated **logic** (ports, adapters, use cases). Phase 4.1 migrates **ownership** (where files live and what imports resolve to).
+
+> **Naming note:** Phase 4 implementation steps use numbers `4.1`–`4.7` (CreateSession, Enqueue, …). This section is a **separate gate** — steps below are `4.1.1`, `4.1.2`, …
+
+### Legacy inventory (logical ✅ vs physical ❌)
+
+| Artifact | Logical owner (onion) | Physical state today | Action in 4.1 |
+|----------|----------------------|----------------------|---------------|
+| Domain models + enums | `use_cases/domain/models.py` | Canonical in `src/domain/models.py`; shim in `use_cases/domain/models.py` | Move body → delete `src/domain/` |
+| Domain errors | `use_cases/domain/errors.py` | Canonical in `src/domain/errors.py`; shim in `use_cases/domain/errors.py` | Move body → delete `src/domain/` |
+| Domain mappers | `use_cases/domain/mappers.py` | OK, but imports `domain.models` | Switch to `use_cases.domain.models` |
+| Domain factories / transitions | `use_cases/domain/{factories,transitions}.py` | Import top-level `domain` | Switch to `use_cases.domain.*` |
+| Repository / port monoliths | `use_cases/repositories/`, `use_cases/ports/` | Deleted in 2–3 ✅ | Verify absent |
+| SQLAlchemy repos shim | `infrastructure/db/sqlalchemy_repositories.py` | `repositories.py` deleted ✅ | — |
+| DB `__init__` aliases | Export `SqlAlchemy*` types | `ArchiveVolumeRepository = SqlAlchemy…` shadows Protocol names | Drop aliases; export concrete names only |
+| Domain unit tests | `tests/test_domain.py` | Imports `domain.*`, scans `src/domain/` | Point at `use_cases.domain.*` |
+| Layer boundary tests | `tests/test_layer_boundaries.py` | Allows `import domain` under `use_cases/domain/` | Forbid top-level `domain` package everywhere |
+
+### Target package layout (domain inside use_cases only)
+
+```
+src/use_cases/domain/
+  models.py       # Session, SourceItem, ArchiveVolume + enums + .create() factories
+  errors.py       # DomainError, *NotFound, InvalidStatusTransition
+  mappers.py      # record ↔ domain (imports use_cases.domain.models only)
+  factories.py    # thin wrappers over .create() (optional; may inline into mappers)
+  transitions.py  # ensure_*_status helpers
+  __init__.py     # public re-exports for use case modules
+
+# DELETE entirely:
+src/domain/       # models.py, errors.py, __init__.py — no top-level domain package
+```
+
+Use case modules (`backup/`, `session/`, `restore/`) import domain **only** via `use_cases.domain.*` — never `from domain`.
+
+### Implementation steps
+
+| Step | Action |
+|------|--------|
+| 4.1.1 | Copy `src/domain/models.py` → `use_cases/domain/models.py` (replace re-export shim with full file body) |
+| 4.1.2 | Copy `src/domain/errors.py` → `use_cases/domain/errors.py` (replace re-export shim) |
+| 4.1.3 | Update `use_cases/domain/mappers.py`, `factories.py`, `transitions.py` — `from use_cases.domain.models` / `use_cases.domain.errors`; **no** `from domain` |
+| 4.1.4 | Update `use_cases/domain/__init__.py` — export `Session`, `SourceItem`, errors, etc. for sibling use case packages |
+| 4.1.5 | Delete package `src/domain/` (`models.py`, `errors.py`, `__init__.py`) |
+| 4.1.6 | Update `tests/test_domain.py` — imports from `use_cases.domain.*`; boundary walk targets `src/use_cases/domain/` only |
+| 4.1.7 | Update `tests/test_repositories.py` and any other `from domain` in `tests/` |
+| 4.1.8 | Tighten `tests/test_layer_boundaries.py`: assert **no** file under `src/` imports top-level package `domain` (including `use_cases/domain/` — use `use_cases.domain` internally) |
+| 4.1.9 | Clean `infrastructure/db/__init__.py` — remove `ArchiveVolumeRepository = SqlAlchemy…` aliases; keep `SqlAlchemyRepositories`, `SqlAlchemySessionRepository`, …; update callers |
+| 4.1.10 | `grep -rE "from domain|import domain" src/ tests/` → **empty** (only `use_cases.domain` allowed) |
+| 4.1.11 | Sync docs: Technology stack §Layer layout, `README.md` import examples, `ONION_ARCHITECTURE.md` §7 checklist |
+
+### Tests
+
+| File | Action |
+|------|--------|
+| `tests/test_domain.py` | Imports `use_cases.domain.models` / `errors`; purity walk on `src/use_cases/domain/` |
+| `tests/test_layer_boundaries.py` | Add `test_no_top_level_domain_imports_anywhere()` covering `src/` + `tests/` |
+| `tests/test_use_cases_backup.py` | No `domain` imports — only `use_cases.domain` (regression) |
+| All unit tests | Must pass unchanged in behavior |
+
+### Verification
+
+```bash
+# No legacy package on disk
+test ! -d src/domain
+
+# No top-level domain imports
+grep -rE "from domain[\\. ]|import domain" src/ tests/   # must be empty
+
+# Purity of canonical domain home
+grep -rE "infrastructure|use_cases\\.repositories|sqlalchemy" src/use_cases/domain/   # must be empty
+
+pytest -m "not integration" -v
+ruff check src tests
+mypy src
+```
+
+### Do not proceed until
+
+- [x] `src/domain/` directory does not exist
+- [x] `use_cases/domain/models.py` and `errors.py` contain real implementations (not `from domain…` re-exports)
+- [x] `grep -rE "from domain|import domain" src/ tests/` returns **empty**
+- [x] `tests/test_domain.py` and extended `test_layer_boundaries.py` pass
+- [x] `pytest -m "not integration"` passes
 
 ---
 
@@ -1020,6 +1175,7 @@ mypy src
 | Feature | Unlocked after phase |
 |---------|---------------------|
 | Clean layer boundaries | 2–3 |
+| No duplicate `src/domain/` package | 4.1 |
 | Repository CRUD via infrastructure | 3 |
 | Telegram upload via port (in correct layer) | 3 |
 | Enqueue file (programmatic) | 4 |
@@ -1042,6 +1198,12 @@ After completing Phases 2–3, update these sections to match the new layout:
 - [ ] `ONION_ARCHITECTURE.md` §7 migration checklist — mark completed items `[x]`
 - [ ] `README.md` — import examples for `SqlAlchemyRepositories`, `TelegramProviderV1`
 
+After Phase 4.1 (legacy cleanup), additionally:
+
+- [x] Remove all references to `src/domain/` in `README.md`, `STEP_BY_STEP_IMPLEMENTATION_GUIDE.md`, Technology stack §Layer layout
+- [x] `ONION_ARCHITECTURE.md` §7 — mark `src/domain/` → `use_cases/domain/` as `[x]`
+- [x] `tests/test_domain.py` module docstring / paths in guides point to `use_cases.domain`
+
 ---
 
 ## Appendix D — Per-phase Definition of Done summary
@@ -1053,6 +1215,7 @@ After completing Phases 2–3, update these sections to match the new layout:
 | 2 | `use_cases` has Protocols only; `test_layer_boundaries` passes |
 | 3 | Implementations in infrastructure; integration CRUD test passes |
 | 4 | Use case unit tests pass with fakes; `display_name` rule tested |
+| 4.1 | `src/domain/` deleted; canonical code in `use_cases/domain/`; no top-level `domain` imports |
 | 5 | Workers execute real pipeline; overlap scenario verified |
 | 6 | `build_facade()` in `infrastructure/bootstrap.py`; `BackupFacade` works; `application/bootstrap.py` removed |
 | 7 | `backend_receiver` → `BackupFacade` only; GUI works; `presentation/` deleted; English UI |

@@ -1,7 +1,16 @@
 from copy import deepcopy
 from uuid import UUID
 
+from domain.models import ArchiveVolume, Session, SourceItem
 from use_cases.persistence import ArchiveVolumeRecord, SessionRecord, SourceItemRecord
+from use_cases.repositories.loading import (
+    map_archive_volumes,
+    map_source_items,
+    require_archive_volume_record,
+    require_archive_volumes_for_session,
+    require_session_record,
+    require_source_item_record,
+)
 
 
 class InMemorySessionRepository:
@@ -14,6 +23,9 @@ class InMemorySessionRepository:
     def get(self, session_id: UUID) -> SessionRecord | None:
         record = self._records.get(session_id)
         return deepcopy(record) if record is not None else None
+
+    def require(self, session_id: UUID) -> Session:
+        return require_session_record(self.get(session_id), session_id)
 
     def update(self, record: SessionRecord) -> None:
         self._records[record.id] = deepcopy(record)
@@ -30,10 +42,16 @@ class InMemorySourceItemRepository:
         record = self._records.get(source_item_id)
         return deepcopy(record) if record is not None else None
 
+    def require(self, source_item_id: UUID) -> SourceItem:
+        return require_source_item_record(self.get(source_item_id), source_item_id)
+
     def list_by_session(self, session_id: UUID) -> list[SourceItemRecord]:
         records = [record for record in self._records.values() if record.session_id == session_id]
         records.sort(key=lambda item: item.created_at)
         return [deepcopy(record) for record in records]
+
+    def list_domain_by_session(self, session_id: UUID) -> list[SourceItem]:
+        return map_source_items(self.list_by_session(session_id))
 
     def update(self, record: SourceItemRecord) -> None:
         self._records[record.id] = deepcopy(record)
@@ -50,12 +68,18 @@ class InMemoryArchiveVolumeRepository:
         record = self._records.get(volume_id)
         return deepcopy(record) if record is not None else None
 
+    def require(self, volume_id: UUID) -> ArchiveVolume:
+        return require_archive_volume_record(self.get(volume_id), volume_id)
+
     def list_by_source_item(self, source_item_id: UUID) -> list[ArchiveVolumeRecord]:
         records = [
             record for record in self._records.values() if record.source_item_id == source_item_id
         ]
         records.sort(key=lambda item: item.part_number)
         return [deepcopy(record) for record in records]
+
+    def list_domain_by_source_item(self, source_item_id: UUID) -> list[ArchiveVolume]:
+        return map_archive_volumes(self.list_by_source_item(source_item_id))
 
     def list_by_session(self, session_id: UUID) -> list[ArchiveVolumeRecord]:
         source_repo = getattr(self, "_source_items", None)
@@ -69,6 +93,9 @@ class InMemoryArchiveVolumeRepository:
         ]
         records.sort(key=lambda item: (item.source_item_id, item.part_number))
         return [deepcopy(record) for record in records]
+
+    def require_for_session(self, session_id: UUID) -> list[ArchiveVolume]:
+        return require_archive_volumes_for_session(self.list_by_session(session_id), session_id)
 
     def update(self, record: ArchiveVolumeRecord) -> None:
         self._records[record.id] = deepcopy(record)

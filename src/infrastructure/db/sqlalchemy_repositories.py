@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import select
@@ -18,6 +19,17 @@ from infrastructure.db.mappers import (
 )
 from infrastructure.db.orm import ArchiveVolumeRow, SourceItemRow, UploadSessionRow
 from use_cases.persistence import ArchiveVolumeRecord, SessionRecord, SourceItemRecord
+from use_cases.repositories.loading import (
+    map_archive_volumes,
+    map_source_items,
+    require_archive_volume_record,
+    require_archive_volumes_for_session,
+    require_session_record,
+    require_source_item_record,
+)
+
+if TYPE_CHECKING:
+    from domain.models import ArchiveVolume, Session, SourceItem  # noqa: TC001
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +46,9 @@ class SqlAlchemySessionRepository:
             if row is None:
                 return None
             return upload_session_row_to_record(row)
+
+    def require(self, session_id: UUID) -> Session:
+        return require_session_record(self.get(session_id), session_id)
 
     def update(self, record: SessionRecord) -> None:
         with db_session_scope(self.db_session_factory) as db:
@@ -55,6 +70,9 @@ class SqlAlchemySourceItemRepository:
                 return None
             return source_item_row_to_record(row)
 
+    def require(self, source_item_id: UUID) -> SourceItem:
+        return require_source_item_record(self.get(source_item_id), source_item_id)
+
     def list_by_session(self, session_id: UUID) -> list[SourceItemRecord]:
         with db_session_scope(self.db_session_factory) as db:
             rows = db.scalars(
@@ -63,6 +81,9 @@ class SqlAlchemySourceItemRepository:
                 .order_by(SourceItemRow.created_at)
             ).all()
             return [source_item_row_to_record(row) for row in rows]
+
+    def list_domain_by_session(self, session_id: UUID) -> list[SourceItem]:
+        return map_source_items(self.list_by_session(session_id))
 
     def update(self, record: SourceItemRecord) -> None:
         with db_session_scope(self.db_session_factory) as db:
@@ -84,6 +105,9 @@ class SqlAlchemyArchiveVolumeRepository:
                 return None
             return archive_volume_row_to_record(row)
 
+    def require(self, volume_id: UUID) -> ArchiveVolume:
+        return require_archive_volume_record(self.get(volume_id), volume_id)
+
     def list_by_source_item(self, source_item_id: UUID) -> list[ArchiveVolumeRecord]:
         with db_session_scope(self.db_session_factory) as db:
             rows = db.scalars(
@@ -92,6 +116,9 @@ class SqlAlchemyArchiveVolumeRepository:
                 .order_by(ArchiveVolumeRow.part_number)
             ).all()
             return [archive_volume_row_to_record(row) for row in rows]
+
+    def list_domain_by_source_item(self, source_item_id: UUID) -> list[ArchiveVolume]:
+        return map_archive_volumes(self.list_by_source_item(source_item_id))
 
     def list_by_session(self, session_id: UUID) -> list[ArchiveVolumeRecord]:
         with db_session_scope(self.db_session_factory) as db:
@@ -102,6 +129,9 @@ class SqlAlchemyArchiveVolumeRepository:
                 .order_by(SourceItemRow.created_at, ArchiveVolumeRow.part_number)
             ).all()
             return [archive_volume_row_to_record(row) for row in rows]
+
+    def require_for_session(self, session_id: UUID) -> list[ArchiveVolume]:
+        return require_archive_volumes_for_session(self.list_by_session(session_id), session_id)
 
     def update(self, record: ArchiveVolumeRecord) -> None:
         with db_session_scope(self.db_session_factory) as db:

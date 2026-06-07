@@ -6,22 +6,7 @@ from infrastructure.db.sqlalchemy_repositories import (
     SqlAlchemySourceItemRepository,
 )
 
-ArchiveVolumeRepository = SqlAlchemyArchiveVolumeRepository
-PostgresArchiveVolumeRepository = SqlAlchemyArchiveVolumeRepository
-PostgresSessionRepository = SqlAlchemySessionRepository
-PostgresSourceItemRepository = SqlAlchemySourceItemRepository
-Repositories = SqlAlchemyRepositories
-SessionRepository = SqlAlchemySessionRepository
-SourceItemRepository = SqlAlchemySourceItemRepository
-
 __all__ = [
-    "ArchiveVolumeRepository",
-    "PostgresArchiveVolumeRepository",
-    "PostgresSessionRepository",
-    "PostgresSourceItemRepository",
-    "Repositories",
-    "SessionRepository",
-    "SourceItemRepository",
     "SqlAlchemyArchiveVolumeRepository",
     "SqlAlchemyRepositories",
     "SqlAlchemySessionRepository",

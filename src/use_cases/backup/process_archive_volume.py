@@ -1,17 +1,9 @@
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
-from use_cases.domain.errors import SessionNotFound, SourceItemNotFound
-from use_cases.domain.factories import archive_volume_create
-from use_cases.domain.mappers import (
-    domain_to_archive_volume_record,
-    domain_to_source_item_record,
-    session_record_to_domain,
-    source_item_record_to_domain,
-)
-from use_cases.domain.models import SourceItemStatus
-from use_cases.domain.transitions import ensure_source_item_status
+import domain as domain
+from use_cases.mappers import domain_to_archive_volume_record, domain_to_source_item_record
 from use_cases.ports.archive_service import ArchiveServicePort
 from use_cases.ports.task_queue import TaskQueuePort
 from use_cases.repositories.archive_volume import ArchiveVolumeRepository
@@ -29,19 +21,12 @@ class ProcessArchiveVolumeUseCase:
     archive_cache_dir: Path
 
     def execute(self, source_item_id: UUID) -> None:
-        item_record = self.source_items.get(source_item_id)
-        if item_record is None:
-            raise SourceItemNotFound
+        item = self.source_items.require(source_item_id)
+        domain.prepare_source_item_for_archive(item)
 
-        item = source_item_record_to_domain(item_record)
-        ensure_source_item_status(item.status, SourceItemStatus.QUEUED)
+        session = self.sessions.require(item.session_id)
 
-        session_record = self.sessions.get(item.session_id)
-        if session_record is None:
-            raise SessionNotFound
-        session = session_record_to_domain(session_record)
-
-        archiving = replace(item, status=SourceItemStatus.ARCHIVING)
+        archiving = domain.mark_source_item(item, status=domain.SourceItemStatus.ARCHIVING)
         self.source_items.update(domain_to_source_item_record(archiving))
 
         result = self.archive_service.archive(
@@ -53,7 +38,7 @@ class ProcessArchiveVolumeUseCase:
         )
 
         for part in result.volumes:
-            volume = archive_volume_create(
+            volume = domain.create_archive_volume(
                 source_item_id=item.id,
                 file_name=part.outgoing_file_name,
                 local_path=part.outgoing_path,
@@ -62,5 +47,5 @@ class ProcessArchiveVolumeUseCase:
             self.archive_volumes.add(domain_to_archive_volume_record(volume))
             self.task_queue.enqueue_upload(volume.id)
 
-        uploading = replace(archiving, status=SourceItemStatus.UPLOADING)
+        uploading = domain.mark_source_item(archiving, status=domain.SourceItemStatus.UPLOADING)
         self.source_items.update(domain_to_source_item_record(uploading))

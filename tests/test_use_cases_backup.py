@@ -3,15 +3,14 @@ from pathlib import Path
 
 import pytest
 
+import domain as domain
 from tests.fakes.ports import FakeArchiveService, FakeStorageProvider, FakeTaskQueue
 from tests.fakes.repositories import InMemoryRepositories
 from use_cases.backup.cleanup_volume import CleanupVolumeUseCase
 from use_cases.backup.enqueue_source_item import EnqueueSourceItemUseCase
 from use_cases.backup.process_archive_volume import ProcessArchiveVolumeUseCase
 from use_cases.backup.process_upload_volume import ProcessUploadVolumeUseCase
-from use_cases.domain.errors import InvalidStatusTransition
-from use_cases.domain.mappers import domain_to_session_record
-from use_cases.domain.models import SessionStatus, SourceItemStatus
+from use_cases.mappers import domain_to_session_record, source_item_record_to_domain
 from use_cases.ports.archive_service import ArchiveVolumePart
 from use_cases.session.create_session import CreateSessionUseCase
 
@@ -54,7 +53,7 @@ def test_backup_happy_path_with_fakes(
     tmp_path: Path,
 ) -> None:
     session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
-    running = replace(session, status=SessionStatus.RUNNING)
+    running = domain.mark_session(session, status=domain.SessionStatus.RUNNING)
     repos.sessions.update(domain_to_session_record(running))
 
     source_file = tmp_path / "payload.bin"
@@ -112,7 +111,10 @@ def test_backup_happy_path_with_fakes(
 
     final_item = repos.source_items.get(item.id)
     assert final_item is not None
-    assert final_item.status == SourceItemStatus.COMPLETED.value
+    assert domain.is_source_item(
+        source_item_record_to_domain(final_item),
+        status=domain.SourceItemStatus.COMPLETED,
+    )
 
 
 def test_process_archive_raises_on_invalid_status(
@@ -131,9 +133,11 @@ def test_process_archive_raises_on_invalid_status(
 
     item_record = repos.source_items.get(item.id)
     assert item_record is not None
-    repos.source_items.update(replace(item_record, status=SourceItemStatus.ARCHIVING.value))
+    repos.source_items.update(
+        replace(item_record, status=domain.SourceItemStatus.ARCHIVING.value),
+    )
 
-    with pytest.raises(InvalidStatusTransition):
+    with pytest.raises(domain.DomainError):
         ProcessArchiveVolumeUseCase(
             sessions=repos.sessions,
             source_items=repos.source_items,

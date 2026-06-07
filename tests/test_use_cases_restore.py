@@ -4,9 +4,9 @@ from uuid import uuid4
 
 import pytest
 
+import domain as domain
 from tests.fakes.ports import FakeStorageProvider
 from tests.fakes.repositories import InMemoryRepositories
-from use_cases.domain.errors import ArchiveVolumeNotFound
 from use_cases.persistence import ArchiveVolumeRecord, SourceItemRecord
 from use_cases.restore.restore_session import RestoreSessionUseCase
 
@@ -102,7 +102,7 @@ def test_restore_raises_when_volume_missing_external_file_id(tmp_path: Path) -> 
         )
     )
 
-    with pytest.raises(ArchiveVolumeNotFound):
+    with pytest.raises(domain.DomainError):
         RestoreSessionUseCase(
             archive_volumes=repos.archive_volumes,
             storage_provider=FakeStorageProvider(),
@@ -112,7 +112,7 @@ def test_restore_raises_when_volume_missing_external_file_id(tmp_path: Path) -> 
 
 def test_restore_raises_when_no_volumes(tmp_path: Path) -> None:
     repos = InMemoryRepositories()
-    with pytest.raises(ArchiveVolumeNotFound):
+    with pytest.raises(domain.DomainError):
         RestoreSessionUseCase(
             archive_volumes=repos.archive_volumes,
             storage_provider=FakeStorageProvider(),

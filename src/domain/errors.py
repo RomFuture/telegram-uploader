@@ -1,37 +1,82 @@
 """Domain-level exceptions. No I/O, no layer imports."""
 
 from dataclasses import dataclass
-
-
-class DomainError(Exception):
-    """Base class for domain errors."""
-
-
-class SessionNotFound(DomainError):
-    """Raised when a session cannot be found."""
-
-
-class SourceItemNotFound(DomainError):
-    """Raised when a source item cannot be found."""
-
-
-class ArchiveVolumeNotFound(DomainError):
-    """Raised when an archive volume cannot be found."""
+from uuid import UUID
 
 
 @dataclass(slots=True)
-class InvalidStatusTransition(DomainError):
-    """Raised when an entity status transition is not allowed."""
+class DomainError(Exception):
+    """Single domain error type — identity via ``code`` and context fields."""
 
-    entity: str
-    from_status: str
-    to_status: str
+    code: str
+    message: str
+    entity: str | None = None
+    entity_id: UUID | None = None
+    from_status: str | None = None
+    to_status: str | None = None
+    reason: str | None = None
 
     def __post_init__(self) -> None:
-        super().__init__(
-            f"{self.entity}: cannot transition from {self.from_status!r} to {self.to_status!r}",
+        super().__init__(self.message)
+
+    @classmethod
+    def session_not_found(cls, session_id: UUID) -> "DomainError":
+        return cls(
+            code="session_not_found",
+            message=f"Session not found: {session_id}",
+            entity="Session",
+            entity_id=session_id,
         )
 
     @classmethod
-    def create(cls, entity: str, from_status: str, to_status: str) -> "InvalidStatusTransition":
-        return cls(entity=entity, from_status=from_status, to_status=to_status)
+    def source_item_not_found(cls, item_id: UUID) -> "DomainError":
+        return cls(
+            code="source_item_not_found",
+            message=f"Source item not found: {item_id}",
+            entity="SourceItem",
+            entity_id=item_id,
+        )
+
+    @classmethod
+    def archive_volume_not_found(cls, volume_id: UUID) -> "DomainError":
+        return cls(
+            code="archive_volume_not_found",
+            message=f"Archive volume not found: {volume_id}",
+            entity="ArchiveVolume",
+            entity_id=volume_id,
+        )
+
+    @classmethod
+    def no_volumes_for_session(cls, session_id: UUID) -> "DomainError":
+        return cls(
+            code="archive_volume_not_found",
+            message=f"No archive volumes found for session: {session_id}",
+            entity="ArchiveVolume",
+            entity_id=session_id,
+            reason="no_volumes",
+        )
+
+    @classmethod
+    def missing_external_file_id(cls, volume_id: UUID) -> "DomainError":
+        return cls(
+            code="archive_volume_not_found",
+            message=f"Archive volume missing external file id: {volume_id}",
+            entity="ArchiveVolume",
+            entity_id=volume_id,
+            reason="missing_external_file_id",
+        )
+
+    @classmethod
+    def invalid_status_transition(
+        cls,
+        entity: str,
+        from_status: str,
+        to_status: str,
+    ) -> "DomainError":
+        return cls(
+            code="invalid_status_transition",
+            message=f"{entity}: cannot transition from {from_status!r} to {to_status!r}",
+            entity=entity,
+            from_status=from_status,
+            to_status=to_status,
+        )

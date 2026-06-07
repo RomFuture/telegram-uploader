@@ -52,7 +52,7 @@ Write these rules in your internal spec first and treat them as non-negotiable:
    - Use one consistent dependency manager.
    - Lock dependency versions for reproducibility.
 3. Create base project layout by layers (folder names match onion sketch):
-   - `src/domain` — center
+   - `src/use_cases/domain/` — доменное ядро (модели, ошибки, мапперы)
    - `src/use_cases` — use cases + ports + DTOs (middle ring)
    - `src/infrastructure` — DB, Celery, 7z, Telegram adapters
    - `src/application` — GUI + `backend_receiver` (прослойка к infrastructure)
@@ -92,7 +92,7 @@ Checkpoint:
 
 - `StorageProviderPort`: `src/use_cases/ports.py`
 - Provider DTOs: `src/use_cases/dto.py`
-- Domain models and enums: `src/domain/models.py` — `SourceItem` includes `display_name: str`; `SourceItem.create()` requires it.
+- Domain models and enums: `src/use_cases/domain/models.py` — `SourceItem` includes `display_name: str`; `SourceItem.create()` requires it.
 - Repository protocols: `src/use_cases/repositories.py` — `SourceItemRepository` includes `get(id)`.
 - Use cases and concrete repository implementations are **not** wired yet.
 

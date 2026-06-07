@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 
-from use_cases.domain.factories import session_create
-from use_cases.domain.mappers import domain_to_session_record
-from use_cases.domain.models import Session
+import domain as domain
+from use_cases.mappers import domain_to_session_record
 from use_cases.repositories.session import SessionRepository
 
 
@@ -10,7 +9,7 @@ from use_cases.repositories.session import SessionRepository
 class CreateSessionUseCase:
     sessions: SessionRepository
 
-    def execute(self, profile_name: str, encryption_key: str) -> Session:
-        session = session_create(profile_name, encryption_key)
+    def execute(self, profile_name: str, encryption_key: str) -> object:
+        session = domain.create_session(profile_name, encryption_key)
         self.sessions.add(domain_to_session_record(session))
         return session

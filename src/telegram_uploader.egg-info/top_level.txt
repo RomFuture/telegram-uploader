@@ -1,5 +1,4 @@
 application
-domain
 infrastructure
 presentation
 use_cases
