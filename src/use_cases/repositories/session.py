@@ -1,8 +1,8 @@
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from domain.models import Session
 from use_cases.persistence import SessionRecord
+from use_cases.types import Session
 
 
 @runtime_checkable

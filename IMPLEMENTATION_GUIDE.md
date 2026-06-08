@@ -1,5 +1,7 @@
 # Руководство по реализации: Portable Messenger Disk (Telegram-first v1)
 
+> ⚠️ **Архив.** Актуально: [docs/PROJECT.md](docs/PROJECT.md), [docs/BACKLOG.md](docs/BACKLOG.md), [docs/TELEGRAM_CLIENT_API_MIGRATION.md](docs/TELEGRAM_CLIENT_API_MIGRATION.md).
+
 Документ описывает порядок внедрения мульти-мессенджерной архитектуры, где `v1` использует Telegram как первый реальный провайдер, но ядро остается provider-agnostic.
 
 Смысл гайда: зафиксировать, что расширение на `Max`, `VK` и другие мессенджеры делается добавлением адаптеров, а не переписыванием бизнес-логики.

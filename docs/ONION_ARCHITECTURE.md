@@ -6,10 +6,10 @@
 
 Связанные документы:
 
-- [docs/INTERNAL_SPEC.md](INTERNAL_SPEC.md) — обязательные продуктовые правила (язык UI, шифрование, `display_name`, restore metadata).
-- [IMPLEMENTATION_GUIDE.md](../IMPLEMENTATION_GUIDE.md) — этапы внедрения, Telegram-first roadmap, тестовая стратегия.
-- [STEP_BY_STEP_IMPLEMENTATION_GUIDE.md](../STEP_BY_STEP_IMPLEMENTATION_GUIDE.md) — пошаговые чекпоинты сборки проекта.
-- [ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md) — пошаговая имплементация по слоям (implement → test → verify).
+- [PROJECT.md](PROJECT.md) — обзор проекта и индекс документации.
+- [BACKLOG.md](BACKLOG.md) — что ещё не реализовано.
+- [INTERNAL_SPEC.md](INTERNAL_SPEC.md) — продуктовые правила (язык UI, шифрование, `display_name`).
+- [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md) — план замены Bot API на Client API.
 
 ---
 
@@ -92,11 +92,9 @@ flowchart TB
 | `use_cases → sqlalchemy`, `urllib`, `celery` | I/O-детали не в мозге |
 | Любой слой → слой **выше** себя | нарушение соседства |
 
-**Composition root** — единственное место склейки портов и реализаций: [`src/infrastructure/bootstrap.py`](../src/infrastructure/bootstrap.py) (целевой путь).
+**Composition root** — единственное место склейки портов и реализаций: [`src/infrastructure/bootstrap.py`](../src/infrastructure/bootstrap.py).
 
-> **Техдолг:** сейчас bootstrap ещё в [`src/application/bootstrap.py`](../src/application/bootstrap.py) и `docker-compose` вызывает `python -m application.bootstrap`. Перенос кода — отдельная задача; целевая точка входа — `python -m infrastructure.bootstrap`.
-
-**Публичный API для application:** [`src/infrastructure/facade.py`](../src/infrastructure/facade.py) (`BackupFacade`) — единая точка входа: `enqueue_file`, `start_session`, `get_progress`, …
+**Публичный API для application:** [`src/infrastructure/facade.py`](../src/infrastructure/facade.py) (`BackupFacade`) — единая точка входа: `enqueue_file`, `start_session`, `get_progress`, … *(facade — Phase 6)*.
 
 ### Где живёт фоновый конвейер
 
@@ -211,7 +209,7 @@ flowchart LR
 | DTO (`UploadResult`, `ProviderFileInfo`, …) | конкретные реализации `TelegramProviderV1` |
 | `@dataclass` use case с инжектом портов | прямой SQL |
 
-**Готовность:** не готов — нет use case-классов; `repositories.py` и `ports.py` содержат реализации (см. §4).
+**Готовность:** ✅ use case-классы в `backup/`, `session/`, `restore/`; порты в `ports/`; Protocol репозиториев в `repositories/`.
 
 ---
 
@@ -229,7 +227,7 @@ flowchart LR
 | `infrastructure/worker/` | **Celery** — `celery_app.py`, `tasks.py`; маршрутизация очередей, воркеры |
 | `infrastructure/config.py` | env: `POSTGRES_*`, `REDIS_*`, `TELEGRAM_*`, `ARCHIVE_*` |
 
-**Фоновый конвейер:** `use_cases` решает *что* сделать; `infrastructure/worker/tasks.py` — тонкий entrypoint: поднять `BackupFacade` / executor, вызвать use case (целевое состояние; сейчас `tasks.py` — заглушки).
+**Фоновый конвейер:** `use_cases` решает *что* сделать; `infrastructure/worker/tasks.py` — тонкий entrypoint: `build_facade()` → `BackupFacade` → use case `.execute()`.
 
 **Пакет:** [`src/infrastructure/`](../src/infrastructure/)
 
@@ -240,7 +238,7 @@ flowchart LR
 | SQLAlchemy, Celery, HTTP, subprocess | бизнес-правила backup (статусы, политика ретраев) |
 | ORM ↔ persistence-запись в `infrastructure/db/mappers.py` | |
 
-**Готовность:** частично — адаптеры есть; `facade.py` и `bootstrap.py` (целевые) — нет; границы с `use_cases` нарушены (см. §4).
+**Готовность:** backup pipeline wired (`facade`, `bootstrap`, workers). Restore download — Client API migration ([BACKLOG.md](BACKLOG.md)).
 
 ---
 
@@ -255,9 +253,9 @@ flowchart LR
 
 **Пакет:** [`src/application/`](../src/application/)
 
-Папку [`src/presentation/`](../src/presentation/) **слить в** `application/gui/` — дублирует роль слоя 4.
+Папка `src/presentation/` **удалена** (2025-06, Phase 4.2); GUI — в `application/gui/` *(Phase 7)*.
 
-`application/bootstrap.py` — **удалить** (цель); bootstrap переезжает в `infrastructure/`.
+~~`application/bootstrap.py`~~ — **удалён** (Phase 4.2); bootstrap в `infrastructure/bootstrap.py`.
 
 | Можно | Нельзя |
 |-------|--------|
@@ -266,7 +264,7 @@ flowchart LR
 | | бизнес-логика ретраев и lifecycle |
 | | `observation.*` в runtime-коде |
 
-**Готовность:** ~0% GUI; `bootstrap.py` — техдолг (должен быть в `infrastructure`).
+**Готовность:** ~0% GUI; bootstrap ✅ в `infrastructure/`.
 
 ---
 
@@ -354,8 +352,8 @@ docs/
 |--------|------|
 | `src/use_cases/repositories.py` — SQLAlchemy внутри | Protocol в `use_cases/repositories/`; реализация в `infrastructure/db/sqlalchemy_repositories.py` |
 | `src/use_cases/ports.py` — Protocol + `TelegramProviderV1` | Protocol в `use_cases/ports/`; реализация в `infrastructure/providers/telegram_provider.py` |
-| `src/presentation/` — пустой дубль | удалить; GUI в `application/gui/` |
-| `src/application/bootstrap.py` — composition root не на месте | перенести в `infrastructure/bootstrap.py` + `facade.py` |
+| `src/presentation/` — пустой дубль | ✅ удалён (Phase 4.2); GUI в `application/gui/` |
+| ~~`src/application/bootstrap.py`~~ | ✅ перенесён в `infrastructure/bootstrap.py` (Phase 4.2) |
 | нет `infrastructure/facade.py` | `BackupFacade` — единая точка входа для application |
 | ~~`src/domain/` как legacy top-level~~ | **`src/domain/`** — канонический слой 1 ✅ (отделён от `use_cases` с 2025-06) |
 | ~~`use_cases/domain/`~~ | удалён; domain — равноправный пакет |
@@ -381,19 +379,14 @@ docs/
 ```mermaid
 flowchart LR
   ORM[ORM Row] -->|"infra mappers"| Record[use_cases.persistence.Record]
-  Record -->|"use_cases/mappers"| Entity[use_cases.domain.Session]
+  Record -->|"use_cases/mappers"| Entity[domain.Session]
   Entity -->|"use_cases/mappers"| Record
   Record -->|"infra mappers"| ORM
 ```
 
-### Текущие нарушения (технический долг)
+### Открытый техдолг
 
-| Сейчас (нарушение) | Целевое размещение |
-|--------------------|-------------------|
-| [`src/use_cases/repositories.py`](../src/use_cases/repositories.py) импортирует `infrastructure.db.*`, `sqlalchemy` | Protocol → `use_cases/repositories/`; SQLAlchemy → `infrastructure/db/sqlalchemy_repositories.py` |
-| [`src/use_cases/ports.py`](../src/use_cases/ports.py) содержит `TelegramProviderV1` с HTTP | Protocol → `use_cases/ports/storage_provider.py`; HTTP → `infrastructure/providers/telegram_provider.py` |
-| [`src/infrastructure/db/repositories.py`](../src/infrastructure/db/repositories.py) re-export из `use_cases` | Удалить инверсию: infrastructure **реализует**, не импортирует реализацию из мозга |
-| [`src/infrastructure/providers/telegram_provider.py`](../src/infrastructure/providers/telegram_provider.py) re-export из `use_cases` | Полная реализация только в infrastructure |
+См. [BACKLOG.md](BACKLOG.md): Client API provider, restore extract, failed-status rollback, CI, GUI in container.
 
 ### Целевой поток: «забэкапить файл»
 
@@ -432,7 +425,7 @@ sequenceDiagram
 
 `application` знает только `BackupFacade` и UI-DTO.  
 `infrastructure/facade.py` — wiring + вызов use cases.  
-`use_cases` знает `use_cases.domain` + persistence-записи + Protocol.  
+`use_cases` знает `domain` + persistence-записи + Protocol.  
 Worker (`tasks.py`) — тот же `BackupFacade`, без участия `application`.
 
 ### Пример wiring (composition root)
@@ -539,10 +532,10 @@ Observation не заменяет бизнес-логику: он **следит
 
 **Задачи** ([`tasks.py`](../src/infrastructure/worker/tasks.py)) — по одной на стадию:
 
-- `archive_volume(source_item_id)` — stub → цель: вызвать use case / `SevenZipService`, записать тома в БД
-- `upload_volume(archive_volume_id)` — stub → цель: `StorageProviderPort.upload_file`, сохранить `external_*` в БД
-- `cleanup_volume(archive_volume_id)` — stub → цель: удалить файлы из `ARCHIVE_CACHE_DIR`
-- `restore_volume(archive_volume_id)` — stub → цель: download + распаковка
+- `archive_volume` → `BackupFacade.process_archive_volume`
+- `upload_volume` → `BackupFacade.process_upload_volume`
+- `cleanup_volume` → `BackupFacade.process_cleanup_volume`
+- `restore_volume` → `BackupFacade.process_restore_volume` (download only; extract — [BACKLOG.md](BACKLOG.md))
 
 **Параллельный конвейер:** архивация `source_item` B может идти одновременно с upload `source_item` A и cleanup уже отправленных томов. Статусы в PostgreSQL — источник истины для GUI.
 
@@ -550,7 +543,7 @@ Observation не заменяет бизнес-логику: он **следит
 
 | Сервис | Образ / сборка | Зависимости |
 |--------|----------------|-------------|
-| `app` | Dockerfile → `python -m infrastructure.bootstrap` (цель; сейчас `application.bootstrap` — техдолг) | postgres, redis, telegram-bot-api |
+| `app` | Dockerfile → `python -m infrastructure.bootstrap` | postgres, redis, telegram-bot-api |
 | `celery-worker-*` (×5) | тот же образ, разные `-Q` | redis |
 | `postgres` | `postgres:16-alpine` | — |
 | `redis` | `redis:7-alpine` | — |
@@ -589,45 +582,20 @@ Observation не заменяет бизнес-логику: он **следит
 | `infrastructure/worker/tasks.py` — тонкий entrypoint: поднять DI, вызвать use case | бизнес-правила ретраев и смены статусов прямо в `tasks.py` |
 | `application` читает статусы через `BackupFacade.get_progress()` | GUI опрашивает Redis или `use_cases` напрямую |
 
-**Целевой порт (roadmap):** `TaskQueuePort` в `use_cases/ports/`; реализация `CeleryTaskQueue` в `infrastructure/worker/`.
-
-**Готовность:** Celery + Redis + compose + маршрутизация очередей — **есть**; задачи — **заглушки**; wiring use cases ↔ worker — **нет**.
+**Порт:** `TaskQueuePort` в `use_cases/ports/`; реализация `CeleryTaskQueue` в `infrastructure/worker/`.
 
 ---
 
-## 7) Чеклист миграции кода (будущий рефакторинг)
+## 7) Иерархия документов
 
-Документ описывает цель; перенос кода — отдельные задачи.
-
-- [x] `src/domain/` — top-level layer 1 (отделён от `use_cases`)
-- [x] `use_cases/persistence.py` + `use_cases/mappers.py` + `repositories/loading.py` (record ↔ domain)
-- [ ] Разрезать [`src/use_cases/repositories.py`](../src/use_cases/repositories.py) → Protocol в `use_cases/repositories/` + реализация в `infrastructure/db/sqlalchemy_repositories.py`
-- [ ] Перенести `infrastructure/db/mappers.py` на ORM ↔ persistence-запись; убрать любой `import domain` из `infrastructure`
-- [ ] Разрезать [`src/use_cases/ports.py`](../src/use_cases/ports.py) → Protocol в `use_cases/ports/` + `TelegramProviderV1` в `infrastructure/providers/telegram_provider.py`
-- [ ] Ввести use case-классы (`EnqueueSourceItemUseCase`, `RestoreSessionUseCase`, …) с DI через `@dataclass`
-- [ ] Создать [`src/infrastructure/bootstrap.py`](../src/infrastructure/bootstrap.py) + [`src/infrastructure/facade.py`](../src/infrastructure/facade.py) — composition root и `BackupFacade`
-- [ ] Перенести код из [`src/application/bootstrap.py`](../src/application/bootstrap.py) → `infrastructure/bootstrap.py`; удалить `application/bootstrap.py`
-- [ ] Обновить `docker-compose`: `python -m infrastructure.bootstrap`
-- [ ] `backend_receiver` вызывает только `infrastructure.facade` (не `use_cases`)
-- [ ] Удалить [`src/presentation/`](../src/presentation/), перенести GUI в `application/gui/`
-- [ ] Добавить `import-linter` (контракт слоёв в CI)
-- [ ] Синхронизировать [IMPLEMENTATION_GUIDE.md §2.1](../IMPLEMENTATION_GUIDE.md) после рефакторинга
-- [ ] Ввести `TaskQueuePort` в `use_cases`; реализация `CeleryTaskQueue` в `infrastructure/worker/`
-- [ ] Подключить `tasks.py` к use cases и репозиториям (убрать stub-ответы)
-- [ ] Настроить retry/backoff и idempotency в worker (без переноса правил в `tasks` — политика в `use_cases`)
+| Документ | Вопрос |
+|----------|--------|
+| [PROJECT.md](PROJECT.md) | Обзор проекта, статус, индекс |
+| [BACKLOG.md](BACKLOG.md) | Что **не** реализовано |
+| [INTERNAL_SPEC.md](INTERNAL_SPEC.md) | **Что** обязан делать продукт |
+| **ONION_ARCHITECTURE.md** (этот файл) | **Как** устроены слои |
+| [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md) | План Client API |
 
 ---
 
-## 8) Иерархия документов
-
-| Документ | Вопрос, на который отвечает |
-|----------|----------------------------|
-| [docs/INTERNAL_SPEC.md](INTERNAL_SPEC.md) | **Что** обязано делать продукт (шифрование, `display_name`, English UI) |
-| **docs/ONION_ARCHITECTURE.md** (этот файл) | **Как** устроены слои, папки, зависимости |
-| [IMPLEMENTATION_GUIDE.md](../IMPLEMENTATION_GUIDE.md) | **В каком порядке** внедрять и что в roadmap |
-| [STEP_BY_STEP_IMPLEMENTATION_GUIDE.md](../STEP_BY_STEP_IMPLEMENTATION_GUIDE.md) | **Пошаговые чекпоинты** сборки с нуля |
-| [ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md) | **Пошаговая имплементация по слоям** onion (фаза → тесты → verify) |
-
----
-
-**При расхождении между IMPLEMENTATION_GUIDE и этим документом по слоям, папкам и импортам — приоритет у `docs/ONION_ARCHITECTURE.md`.**
+**При расхождении по слоям и импортам — приоритет у этого файла.**

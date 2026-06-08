@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from os import getenv
+from os import environ, getenv
 from pathlib import Path
 
 
@@ -16,7 +16,24 @@ class AppConfig:
     archive_cache_dir: Path
 
 
+def _load_dotenv(path: Path | None = None) -> None:
+    """Load ``.env`` into ``os.environ`` when running outside docker compose."""
+    env_path = path or Path(".env")
+    if not env_path.is_file():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", maxsplit=1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in environ:
+            environ[key] = value
+
+
 def load_config() -> AppConfig:
+    _load_dotenv()
     postgres_host = getenv("POSTGRES_HOST", "localhost")
     postgres_port = getenv("POSTGRES_PORT", "5432")
     postgres_db = getenv("POSTGRES_DB", "telegram_uploader")

@@ -15,4 +15,4 @@ COPY tests ./tests
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e ".[dev]"
 
-CMD ["python", "-m", "application.bootstrap"]
+CMD ["python", "-m", "infrastructure.bootstrap"]

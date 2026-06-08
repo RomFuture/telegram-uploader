@@ -1,8 +1,8 @@
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from domain.models import SourceItem
 from use_cases.persistence import SourceItemRecord
+from use_cases.types import SourceItem
 
 
 @runtime_checkable

@@ -10,6 +10,7 @@ from use_cases.backup.cleanup_volume import CleanupVolumeUseCase
 from use_cases.backup.enqueue_source_item import EnqueueSourceItemUseCase
 from use_cases.backup.process_archive_volume import ProcessArchiveVolumeUseCase
 from use_cases.backup.process_upload_volume import ProcessUploadVolumeUseCase
+from use_cases.backup.start_backup_pipeline import StartBackupPipelineUseCase
 from use_cases.mappers import domain_to_session_record, source_item_record_to_domain
 from use_cases.ports.archive_service import ArchiveVolumePart
 from use_cases.session.create_session import CreateSessionUseCase
@@ -115,6 +116,66 @@ def test_backup_happy_path_with_fakes(
         source_item_record_to_domain(final_item),
         status=domain.SourceItemStatus.COMPLETED,
     )
+
+
+def test_start_backup_pipeline_transitions_created_to_running(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    source_file = tmp_path / "queued.bin"
+    source_file.write_bytes(b"q")
+    EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        session.id,
+        source_file,
+        "Queued item",
+    )
+    task_queue.archive_ids.clear()
+
+    enqueued = StartBackupPipelineUseCase(repos, task_queue).execute(session.id)
+
+    assert enqueued == 1
+    stored = repos.sessions.get(session.id)
+    assert stored is not None
+    assert stored.status == domain.SessionStatus.RUNNING.value
+
+
+def test_start_backup_pipeline_enqueues_only_queued_items(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    running = domain.mark_session(session, status=domain.SessionStatus.RUNNING)
+    repos.sessions.update(domain_to_session_record(running))
+
+    queued_file = tmp_path / "queued.bin"
+    queued_file.write_bytes(b"q")
+    queued_item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        running.id,
+        queued_file,
+        "Queued item",
+    )
+
+    completed_file = tmp_path / "done.bin"
+    completed_file.write_bytes(b"d")
+    completed_item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        running.id,
+        completed_file,
+        "Done item",
+    )
+    completed_record = repos.source_items.get(completed_item.id)
+    assert completed_record is not None
+    repos.source_items.update(
+        replace(completed_record, status=domain.SourceItemStatus.COMPLETED.value),
+    )
+
+    task_queue.archive_ids.clear()
+    enqueued = StartBackupPipelineUseCase(repos, task_queue).execute(running.id)
+
+    assert enqueued == 1
+    assert task_queue.archive_ids == [queued_item.id]
 
 
 def test_process_archive_raises_on_invalid_status(

@@ -1,7 +1,6 @@
 from copy import deepcopy
 from uuid import UUID
 
-from domain.models import ArchiveVolume, Session, SourceItem
 from use_cases.persistence import ArchiveVolumeRecord, SessionRecord, SourceItemRecord
 from use_cases.repositories.loading import (
     map_archive_volumes,
@@ -11,6 +10,7 @@ from use_cases.repositories.loading import (
     require_session_record,
     require_source_item_record,
 )
+from use_cases.types import ArchiveVolume, Session, SourceItem
 
 
 class InMemorySessionRepository:

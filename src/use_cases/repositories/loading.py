@@ -3,13 +3,13 @@
 from uuid import UUID
 
 import domain as domain
-from domain.models import ArchiveVolume, Session, SourceItem
 from use_cases.mappers import (
     archive_volume_record_to_domain,
     session_record_to_domain,
     source_item_record_to_domain,
 )
 from use_cases.persistence import ArchiveVolumeRecord, SessionRecord, SourceItemRecord
+from use_cases.types import ArchiveVolume, Session, SourceItem
 
 
 def require_session_record(record: SessionRecord | None, session_id: UUID) -> Session:

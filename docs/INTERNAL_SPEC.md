@@ -12,6 +12,7 @@ This document defines mandatory product constraints for implementation.
 
 - Upload destination is one target Telegram group.
 - Topic semantics are forbidden (`message_thread_id` must not be used).
+- **Provider (migration in progress):** production target is **Telegram Client API** (user MTProto session) for reliable restore from the group. Bot API adapter remains legacy until [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md) completes.
 
 ## 3. Security Policy
 

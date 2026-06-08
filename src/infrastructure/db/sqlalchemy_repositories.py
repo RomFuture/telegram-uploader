@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import select
@@ -27,9 +26,7 @@ from use_cases.repositories.loading import (
     require_session_record,
     require_source_item_record,
 )
-
-if TYPE_CHECKING:
-    from domain.models import ArchiveVolume, Session, SourceItem  # noqa: TC001
+from use_cases.types import ArchiveVolume, Session, SourceItem
 
 
 @dataclass(frozen=True, slots=True)

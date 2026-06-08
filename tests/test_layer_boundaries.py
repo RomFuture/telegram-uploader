@@ -127,3 +127,8 @@ def test_domain_has_no_outward_layer_imports() -> None:
                 top = _top_level_module(node.module)
                 assert top not in forbidden_roots, f"{path}: {node.module}"
                 assert top not in forbidden_third_party, f"{path}: {node.module}"
+
+
+def test_no_empty_init_py_under_src() -> None:
+    for path in Path("src").rglob("__init__.py"):
+        assert path.stat().st_size > 0, f"empty package entrypoint: {path}"

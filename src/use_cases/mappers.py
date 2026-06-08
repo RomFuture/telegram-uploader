@@ -2,15 +2,9 @@
 
 from pathlib import Path
 
-from domain.models import (
-    ArchiveVolume,
-    ArchiveVolumeStatus,
-    Session,
-    SessionStatus,
-    SourceItem,
-    SourceItemStatus,
-)
+import domain as domain
 from use_cases.persistence import ArchiveVolumeRecord, SessionRecord, SourceItemRecord
+from use_cases.types import ArchiveVolume, Session, SourceItem
 
 
 def session_record_to_domain(record: SessionRecord) -> Session:
@@ -18,7 +12,7 @@ def session_record_to_domain(record: SessionRecord) -> Session:
         id=record.id,
         profile_name=record.profile_name,
         encryption_key=record.encryption_key,
-        status=SessionStatus(record.status),
+        status=domain.SessionStatus(record.status),
         created_at=record.created_at,
     )
 
@@ -39,7 +33,7 @@ def source_item_record_to_domain(record: SourceItemRecord) -> SourceItem:
         session_id=record.session_id,
         source_path=Path(record.source_path),
         display_name=record.display_name,
-        status=SourceItemStatus(record.status),
+        status=domain.SourceItemStatus(record.status),
         created_at=record.created_at,
     )
 
@@ -62,7 +56,7 @@ def archive_volume_record_to_domain(record: ArchiveVolumeRecord) -> ArchiveVolum
         file_name=record.file_name,
         local_path=Path(record.local_path),
         part_number=record.part_number,
-        status=ArchiveVolumeStatus(record.status),
+        status=domain.ArchiveVolumeStatus(record.status),
         external_file_id=record.external_file_id,
         external_message_id=record.external_message_id,
         provider_download_ref=record.provider_download_ref,

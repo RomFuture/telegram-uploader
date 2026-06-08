@@ -1,3 +1,4 @@
+from infrastructure.archive.archive_service_adapter import ArchiveServiceAdapter
 from infrastructure.archive.seven_zip_service import (
     ArchivePipelineResult,
     OutgoingVolume,
@@ -9,6 +10,7 @@ from infrastructure.archive.seven_zip_service import (
 
 __all__ = [
     "ArchivePipelineResult",
+    "ArchiveServiceAdapter",
     "OutgoingVolume",
     "SevenZipError",
     "SevenZipService",

@@ -26,6 +26,14 @@ def _make_celery() -> Celery:
     app.conf.task_serializer = "json"
     app.conf.result_serializer = "json"
     app.conf.accept_content = ["json"]
+    app.conf.worker_log_format = (
+        "[%(asctime)s: %(levelname)s/%(processName)s] %(message)s"
+    )
+    app.conf.worker_task_log_format = (
+        "[%(asctime)s: %(levelname)s/%(processName)s]"
+        "[%(task_name)s(%(task_id)s)] %(message)s"
+    )
+    app.conf.worker_log_datefmt = "%Y-%m-%d %H:%M:%S"
     return app
 
 

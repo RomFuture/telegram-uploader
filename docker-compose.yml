@@ -1,3 +1,16 @@
+# Host GUI uses localhost in .env; containers reach services by compose DNS names.
+# Workers mount HOST_SOURCE_MOUNT at the same path (default: $HOME) so source_path from GUI resolves in-container.
+x-docker-runtime-env: &docker-runtime-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  REDIS_HOST: redis
+  TELEGRAM_BOT_API_URL: http://telegram-bot-api:8081
+  ARCHIVE_CACHE_DIR: /data/archive-cache
+
+x-worker-volumes: &worker-volumes
+  - ${HOST_SOURCE_MOUNT:-${HOME}}:${HOST_SOURCE_MOUNT:-${HOME}}:ro
+  - archive-cache:/data/archive-cache
+
 services:
   app:
     build:
@@ -5,6 +18,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      <<: *docker-runtime-env
     depends_on:
       postgres:
         condition: service_healthy
@@ -12,7 +27,7 @@ services:
         condition: service_healthy
       telegram-bot-api:
         condition: service_healthy
-    command: ["python", "-m", "application.bootstrap"]
+    command: ["python", "-m", "infrastructure.bootstrap"]
 
   celery-worker-archive-1:
     build:
@@ -20,6 +35,9 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      <<: *docker-runtime-env
+    volumes: *worker-volumes
     depends_on:
       redis:
         condition: service_healthy
@@ -45,6 +63,9 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      <<: *docker-runtime-env
+    volumes: *worker-volumes
     depends_on:
       redis:
         condition: service_healthy
@@ -70,6 +91,9 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      <<: *docker-runtime-env
+    volumes: *worker-volumes
     depends_on:
       redis:
         condition: service_healthy
@@ -95,6 +119,9 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      <<: *docker-runtime-env
+    volumes: *worker-volumes
     depends_on:
       redis:
         condition: service_healthy
@@ -120,6 +147,9 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      <<: *docker-runtime-env
+    volumes: *worker-volumes
     depends_on:
       redis:
         condition: service_healthy
@@ -179,10 +209,11 @@ services:
       - "--http-port=8081"
       - "--local"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8081"]
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8081"]
       interval: 10s
       timeout: 5s
       retries: 10
 
 volumes:
   postgres-data:
+  archive-cache:

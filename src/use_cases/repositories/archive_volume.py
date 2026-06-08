@@ -1,8 +1,8 @@
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from domain.models import ArchiveVolume
 from use_cases.persistence import ArchiveVolumeRecord
+from use_cases.types import ArchiveVolume
 
 
 @runtime_checkable

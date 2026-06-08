@@ -17,7 +17,7 @@ class DomainError(Exception):
     reason: str | None = None
 
     def __post_init__(self) -> None:
-        super().__init__(self.message)
+        Exception.__init__(self, self.message)
 
     @classmethod
     def session_not_found(cls, session_id: UUID) -> "DomainError":

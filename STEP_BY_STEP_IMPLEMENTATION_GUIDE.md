@@ -1,5 +1,11 @@
 # Step-by-Step Project Creation Guide
 
+> **Deprecated.** Актуально: [`docs/PROJECT.md`](docs/PROJECT.md), [`docs/BACKLOG.md`](docs/BACKLOG.md), [`docs/ONION_ARCHITECTURE.md`](docs/ONION_ARCHITECTURE.md).
+>
+> Этот файл сохранён как **историческая справка** (compose, migrations, product rules by feature). Для новой работы используй layer-by-layer guide и [ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md).
+
+---
+
 This guide describes how to build the project from scratch, in strict sequence, with implementation checkpoints.
 
 Sections **4–8** below include an **Implementation status** block: what is already in the repo versus what remains to wire end-to-end (use cases, DB repositories, GUI).

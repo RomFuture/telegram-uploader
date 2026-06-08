@@ -5,7 +5,7 @@
 
 В версии `v1` реальным провайдером будет только Telegram, но архитектура и документация сразу закладываются под добавление `Max`, `VK` и других.
 
-Подробный технический план и порядок внедрения: [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md).
+Документация: **[docs/PROJECT.md](docs/PROJECT.md)**. Backlog: [docs/BACKLOG.md](docs/BACKLOG.md). Слои: [docs/ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md).
 
 ## Что это за проект
 
@@ -17,8 +17,9 @@
 
 ## Статус и рамки v1
 
-- Репозиторий сейчас фиксирует целевую концепцию и этапы реализации.
-- `v1` = Telegram-first: только Telegram-провайдер в production-потоке.
+- **Backup pipeline работает** (GUI → Celery → Telegram upload → `completed`).
+- **Restore:** Bot API download ломается (404) — миграция на [Client API](docs/TELEGRAM_CLIENT_API_MIGRATION.md).
+- `v1` = Telegram-first через `StorageProviderPort` (сейчас Bot API, цель — MTProto user session).
 - Контракт провайдера документируется сразу, чтобы расширение на другие мессенджеры не ломало ядро.
 - После релиза `v1` планируется интеграция дополнительных адаптеров.
 
