@@ -10,6 +10,7 @@
 - [BACKLOG.md](BACKLOG.md) — что ещё не реализовано.
 - [INTERNAL_SPEC.md](INTERNAL_SPEC.md) — продуктовые правила (язык UI, шифрование, `display_name`).
 - [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md) — план замены Bot API на Client API.
+- [ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md) — gate, smoke, цикл имплементации по слоям.
 
 ---
 
@@ -595,6 +596,7 @@ Observation не заменяет бизнес-логику: он **следит
 | [INTERNAL_SPEC.md](INTERNAL_SPEC.md) | **Что** обязан делать продукт |
 | **ONION_ARCHITECTURE.md** (этот файл) | **Как** устроены слои |
 | [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md) | План Client API |
+| [ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md) | **Как работать:** gate, smoke, цикл по слоям |
 
 ---
 

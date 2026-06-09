@@ -18,7 +18,9 @@ Linux desktop app for backing up files to messenger storage. **v1** is Telegram-
 | Restore download (Bot API) | ❌ HTTP 404 |
 | Restore extract (7z → original file) | ❌ |
 | Client API provider | ❌ planned |
-| CI / `import-linter` / observation layer | ❌ |
+| CI (GitHub Actions: ruff, mypy, pytest) | 🟡 `.github/workflows/ci.yml` |
+| CD (`.deb` package + safe upgrades) | ❌ planned — see § Packaging & CD |
+| `import-linter` / observation layer | ❌ |
 
 Unimplemented work: **[BACKLOG.md](BACKLOG.md)** (includes **stack vs CV** matrix from `~/еку.txt`).
 
@@ -32,6 +34,7 @@ Unimplemented work: **[BACKLOG.md](BACKLOG.md)** (includes **stack vs CV** matri
 | **[BACKLOG.md](BACKLOG.md)** | Everything not implemented yet |
 | **[INTERNAL_SPEC.md](INTERNAL_SPEC.md)** | Product rules (encryption, `display_name`, English UI) |
 | **[ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md)** | Layer structure, imports, folders — **source of truth** |
+| **[ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md)** | Gate, smoke, implementation cycle per layer — **mandatory** |
 | **[TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md)** | **Active plan:** Bot API → Client API (MTProto) |
 
 ### Feature / migration plans
@@ -55,11 +58,49 @@ Add new plans here as `docs/<NAME>_MIGRATION.md` or `docs/plans/<name>.md`.
 ## Run (dev)
 
 ```bash
+./scripts/run.sh
+```
+
+Or manually:
+
+```bash
 docker compose up -d
 PYTHONPATH=src .venv/bin/python -m application.gui
 ```
 
 Env: `.env` (see `.env.example`). Host GUI uses `localhost:5433`; containers use compose service names.
+
+## Packaging & CD (P0.05 — planned)
+
+**Goal:** ship a **`.deb`** for Linux desktop install; CD pipeline builds and publishes it on release.
+
+### CD pipeline (to implement)
+
+| Step | What |
+|------|------|
+| Trigger | Git tag `v*` (or release branch) after green CI |
+| Build | `dpkg-deb` / `nfpm` / `fpm` — bundle app (`src/`), `scripts/run.sh`, systemd user units (optional), `docker-compose.yml` + pinned image tag |
+| Publish | GitHub Release artifact `.deb` (+ checksums) |
+| Smoke | Install `.deb` on clean Ubuntu/Debian VM; run backup happy path |
+
+### Safe upgrade order (must not break running installs)
+
+Upgrades are **forward-only**; downgrading the package is unsupported.
+
+1. **Stop consumers** — quit GUI; `docker compose stop` celery workers (archive/upload/cleanup/restore) and `app`.
+2. **Backup state** — document paths users must keep: PostgreSQL volume (`postgres-data`), `archive-cache`, user config (`.env` or `/etc/telegram-uploader/env`), session logs.
+3. **Install new `.deb`** — `apt upgrade` / `dpkg -i`; `postinst` must **not** wipe data dirs or volumes.
+4. **DB migrations** — run `migrate.py` **before** starting workers (same rule as dev bootstrap); migration version stored in DB; package ships only forward migrations.
+5. **Refresh runtime image** — `docker compose pull` (when CD publishes image) or use compose `build` pin matching package version.
+6. **Start infra** — `postgres` → `redis` → `telegram-bot-api` (healthchecks green).
+7. **Start workers** — celery queues, then `app` bootstrap if used.
+8. **Start GUI** — host `python -m application.gui` (or desktop entry from `.deb`).
+
+**Version coupling:** package `Version` = `pyproject.toml` version = Docker image tag = migration set for that release. Mismatch → refuse start with clear error.
+
+**Config on upgrade:** preserve env file and `HOST_SOURCE_MOUNT`; new keys from `.env.example` merged in `postinst` (append missing defaults, never overwrite secrets).
+
+**Rollback policy:** re-install previous `.deb` only if DB was not migrated forward; if migrations ran, rollback requires restore from backup (document in release notes).
 
 ## Verify
 
@@ -71,7 +112,8 @@ docker compose logs -f celery-worker-archive-1
 
 ## Repo root
 
-- [README.md](../README.md) — short product blurb (RU)
+- [README.md](../README.md) — product overview, quick start, roadmap (EN)
+- [scripts/run.sh](../scripts/run.sh) — dev launcher: `docker compose up -d` + GUI
 - [docker-compose.yml](../docker-compose.yml) — runtime services
 
 ---

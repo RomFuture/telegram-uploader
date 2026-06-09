@@ -1,138 +1,213 @@
-# Portable Messenger Disk
+# telegram-uploader
 
-`Portable Messenger Disk` — Linux-приложение для резервного хранения файлов через мессенджеры.
-Ключевая идея: не привязываться к одному сервису, а использовать универсальную модель провайдеров хранения.
+Linux desktop app for backing up files to messenger storage. **v1** is Telegram-first; the core is provider-agnostic via `StorageProviderPort`, so additional messengers (Max, VK, etc.) can be added later without rewriting the app.
 
-В версии `v1` реальным провайдером будет только Telegram, но архитектура и документация сразу закладываются под добавление `Max`, `VK` и других.
+Full project overview: **[docs/PROJECT.md](docs/PROJECT.md)** · detailed backlog: **[docs/BACKLOG.md](docs/BACKLOG.md)** · layer rules: **[docs/ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md)**
 
-Документация: **[docs/PROJECT.md](docs/PROJECT.md)**. Backlog: [docs/BACKLOG.md](docs/BACKLOG.md). Слои: [docs/ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md).
+## What it does
 
-## Что это за проект
+1. User picks files in the GUI (English UI; `display_name` is captured at enqueue).
+2. The pipeline archives with **7z** (encrypt + split), uploads volumes to a **target Telegram group**, and tracks state in **PostgreSQL**.
+3. **Celery workers** (archive / upload / cleanup / restore queues) run heavy work; the GUI talks to **`BackupFacade`** only.
+4. **Restore** (planned end-to-end) downloads volumes and extracts the original file.
 
-- Приложение принимает файлы/папки, архивирует через `7z`, шифрует и нарезает тома.
-- Тома отправляются через выбранный провайдер хранения (в `v1`: Telegram).
-- Состояние сессий и томов фиксируется в `PostgreSQL`, фоновые задачи выполняются через `Celery + Redis`.
-- Логи и итоги сессий хранятся локально на машине, не в чате мессенджера.
-- Восстановление строится на данных БД и API провайдера.
+## Current status (June 2026)
 
-## Статус и рамки v1
+| Area | Status |
+|------|--------|
+| Onion layers: `domain` → `use_cases` → `infrastructure` → `application` | Done |
+| Backup: GUI → workers → Telegram → `completed` | Done |
+| Restore download (Bot API) | Broken — HTTP 404 |
+| Restore extract (7z → original file) | Not implemented |
+| Telegram Client API provider (MTProto) | Planned — [migration doc](docs/TELEGRAM_CLIENT_API_MIGRATION.md) |
+| CI (GitHub Actions: ruff, mypy, pytest) | Partial — [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
+| CD (`.deb` package + safe upgrades) | Planned — see [Packaging & CD](docs/PROJECT.md#packaging--cd-p005--planned) |
+| `import-linter` / observation layer | Not implemented |
 
-- **Backup pipeline работает** (GUI → Celery → Telegram upload → `completed`).
-- **Restore:** Bot API download ломается (404) — миграция на [Client API](docs/TELEGRAM_CLIENT_API_MIGRATION.md).
-- `v1` = Telegram-first через `StorageProviderPort` (сейчас Bot API, цель — MTProto user session).
-- Контракт провайдера документируется сразу, чтобы расширение на другие мессенджеры не ломало ядро.
-- После релиза `v1` планируется интеграция дополнительных адаптеров.
+Architecture cleanup is in progress bottom-up: **use_cases → infrastructure → application** (see backlog).
 
-## Архитектурная идея
+## Quick start
+
+### Prerequisites
+
+- Linux with **Docker** and **Docker Compose**
+- **Python 3.12+** with Tkinter (for the host GUI)
+- Git
+
+### Setup
+
+```bash
+git clone git@github.com:RomFuture/telegram-uploader.git
+cd telegram-uploader
+
+cp .env.example .env
+# Edit .env: Telegram bot token, API id/hash, target chat id, etc.
+
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+```
+
+Host GUI connects to Postgres/Redis on `localhost` (default Postgres port **5433** in `.env.example` to avoid clashing with a system Postgres). Containers use Compose service names internally.
+
+### Run the app
+
+```bash
+./scripts/run.sh
+```
+
+This script:
+
+1. Starts the Docker stack (`docker compose up -d`) — Postgres, Redis, `telegram-bot-api`, Celery workers.
+2. Launches the Tkinter GUI on the host (`.venv/bin/python -m application.gui`).
+
+Manual equivalent:
+
+```bash
+docker compose up -d
+PYTHONPATH=src .venv/bin/python -m application.gui
+```
+
+**Smoke test:** Start Session → Add File → Start Backup → Refresh Progress. Watch workers: `docker compose logs -f celery-worker-archive-1`.
+
+## Architecture
 
 ```mermaid
 flowchart TB
   ui[LinuxGUI] --> backend[AppBackendReceiver]
-  backend --> app[ApplicationUseCases]
-  app --> queue[CeleryQueue]
-  app --> db[(PostgreSQL)]
+  backend --> facade[BackupFacade]
+  facade --> useCases[UseCases]
+  useCases --> queue[CeleryQueue]
+  useCases --> db[(PostgreSQL)]
   queue --> worker[CeleryWorker]
   worker --> redis[(Redis)]
   worker --> db
   worker --> archive[SevenZipService]
-  worker --> providerPort
+  worker --> providerPort[StorageProviderPort]
   providerPort --> tgProvider[TelegramProviderV1]
   tgProvider --> tgApi[TelegramBotAPI]
-  tgApi --> messenger[TelegramGroupNoTopics]
-  messenger -->|"file_id/message_id/download_ref"| db
-  futureProviders[FutureProvidersMaxVkEtc] --> providerPort
+  tgApi --> messenger[TelegramGroup]
 ```
 
-Смысл: Linux GUI отправляет команды в backend-приемник приложения, use cases ставят фоновые задачи, а отдельные сервисы (Celery + Redis + worker) параллельно выполняют архивацию, отправку и очистку с учетом статусов в БД.
+Layers (onion): `application` → `infrastructure` → `use_cases` → `domain`. GUI must not import infrastructure directly.
 
-## Провайдеры хранения
+## Stack
 
-Провайдер — это модуль, который реализует единый контракт `StorageProviderPort` (`MessageProvider` как рабочее имя).
+| Piece | Role |
+|-------|------|
+| `src/domain/` | Entities, statuses, invariants |
+| `src/use_cases/` | Use cases + `StorageProviderPort` Protocol |
+| `src/infrastructure/` | DB, 7z, Celery, `TelegramProviderV1`, `BackupFacade`, `bootstrap` |
+| `src/application/` | `backend_receiver` + Tkinter GUI |
+| Docker | Postgres, Redis, Celery workers, `telegram-bot-api` (legacy) |
 
-Минимальный контракт провайдера:
+## Verify (development)
 
-- Проверить подключение и права (`healthcheck`, доступ к целевому пространству хранения).
-- Принять файл для загрузки и вернуть провайдерный идентификатор (`external_file_id`, `external_message_id`).
-- Отдать ссылку/метаданные для скачивания при restore.
-- Сообщить о провайдерных ограничениях (лимит размера, rate limit, особенности чанков и модели доставки).
-- Нормализовать ошибки во внутренний формат (`retryable`, `fatal`, `rate_limited`).
-- После успешной отправки сохранять в БД идентификаторы и референс скачивания (`provider_download_ref`) для restore.
+```bash
+.venv/bin/pytest -m "not integration" -v
+.venv/bin/ruff check src tests && .venv/bin/mypy src
+docker compose logs -f celery-worker-archive-1
+```
 
-Важно: в `v1` этот контракт реализует только `TelegramProvider`, но все сценарии приложения строятся так, будто провайдеров может быть несколько.
+## Documentation
 
-## Пользовательский flow Linux-приложения
+| Document | Purpose |
+|----------|---------|
+| [docs/PROJECT.md](docs/PROJECT.md) | Project overview, run instructions, packaging/CD plan |
+| [docs/BACKLOG.md](docs/BACKLOG.md) | Everything not implemented yet |
+| [docs/INTERNAL_SPEC.md](docs/INTERNAL_SPEC.md) | Product rules (encryption, `display_name`, English UI) |
+| [docs/ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md) | Layer structure and import rules |
+| [docs/TELEGRAM_CLIENT_API_MIGRATION.md](docs/TELEGRAM_CLIENT_API_MIGRATION.md) | Bot API → Client API (MTProto) |
 
-1. Пользователь запускает локальное приложение (не браузер).
-2. Выбирает провайдер хранения (в `v1` доступен Telegram).
-3. Указывает параметры сессии: источник файлов, настройки архива, политику завершения.
-4. GUI отправляет команду в backend-приемник, после чего use cases запускают конвейер задач в Celery.
-5. Конвейер работает параллельно: готовые архивы сразу отправляются в мессенджер, пока параллельно архивируются следующие объекты.
-6. Видит прогресс, ошибки и итог в интерфейсе; подробный лог сохраняется локально.
-7. При необходимости запускает restore и выгружает тома обратно на диск.
+---
 
-## Технологический стек
+## Roadmap — work stages & planned features (TODO)
 
-- `Python` как основной язык приложения.
-- `Celery` для фоновых задач и очередей.
-- `Redis` как broker/result backend для `Celery`.
-- `PostgreSQL` для сессий, очередей и учета томов.
-- `7z` для шифрования и нарезки архивов.
-- `Postman` для проверки API-сценариев интеграции.
-- `pytest` для unit/integration/contract тестов.
+Status key: **done** · **in progress** · **TODO**
 
-## Текущий baseline (шаги 1-3)
+### P-demo — show a working v1
 
-- Зафиксированы обязательные продуктовые правила в `docs/INTERNAL_SPEC.md`.
-- Добавлен Python baseline в `pyproject.toml` + pinned dev lock в `requirements-dev.lock`.
-- Подготовлена слоистая структура (см. [docs/ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md)): `application` → `infrastructure` → `use_cases` → `domain`. Целевой entrypoint: `python -m infrastructure.bootstrap`.
-- Добавлены базовые контракты:
-  - `StorageProviderPort` в `src/use_cases/ports.py`;
-  - DTO результатов/ошибок провайдера в `src/use_cases/dto.py`;
-  - repository-порты в `src/use_cases/repositories.py`;
-  - доменные модели/статусы в `src/domain/models.py`.
-- Добавлены smoke/contract skeleton tests в `tests/`.
+| Item | Status |
+|------|--------|
+| `scripts/run.sh` — one command: Docker stack + GUI | **done** |
+| `.github/workflows/ci.yml` — ruff, mypy, pytest on push/PR | **in progress** |
+| README quick start (clone → `.env` → `./scripts/run.sh`) | **done** |
+| Backup happy path stable for demo | **done** |
+| Client API / restore for demo | **TODO** (not a demo blocker if backup is stable) |
 
-## Telegram-first ограничения v1
+### P0.05 — Packaging & CD (optional, early)
 
-- Используется локальный `telegram-bot-api`, а не `api.telegram.org` напрямую.
-- Поддерживается сценарий отправки документов-томов в целевую группу (без тем).
-- Лимиты размера и rate limit Telegram учитываются в политике ретраев.
-- Полный обход старой истории чата через Bot API не считается базовой гарантией.
+| Item | Status |
+|------|--------|
+| CD pipeline: build `.deb` on release tag | **TODO** |
+| Safe upgrade order (stop workers → migrate DB → refresh image → start) | **TODO** (documented in [PROJECT.md](docs/PROJECT.md)) |
+| Version coupling: deb = `pyproject.toml` = Docker tag = migrations | **TODO** |
 
-Логические разделения по папкам и наборам выполняются в GUI приложения, а не через Telegram topics/threads.
-Это ограничения конкретного адаптера Telegram, а не ограничения всей платформенной идеи.
+### P0 — Architecture cleanup (current priority)
 
-## Надежность и безопасность
+**Order:** `use_cases` → `infrastructure` → `application`
 
-- Конвейер обрабатывает `source_item` параллельно по стадиям: архивация, отправка и очистка не блокируют друг друга.
-- Временный кеш томов очищается после успешной отправки соответствующего объекта.
-- Исходники не перемещаются приложением автоматически: выбор и организация данных выполняются пользователем через GUI.
-- Шифрование обязательно для всех архивов: ключ по умолчанию генерируется приложением, но может быть изменен пользователем в настройках.
-- Имена томов в Telegram содержат хешированное пользовательское имя файла (стабильная часть имени для группировки и приватности).
-- Секреты (токены, пароли архивов) не хранятся в git и не пишутся в открытом виде в логах.
-- Восстановление возможно по данным БД и идентификаторам, сохраненным провайдером.
+| Stage | Focus | Status |
+|-------|-------|--------|
+| **P0.1** `use_cases` | Audit ports/records, restore/upload refs for Client API, failed-status policy in use cases, remove backup/restore duplication | **TODO** |
+| **P0.2** `infrastructure` | Bootstrap/facade wiring, **Telegram Client API provider**, structured logging, failed-pipeline rollback | **TODO** |
+| **P0.3** `application` + GUI | Thin `backend_receiver`, better errors, failed/stuck statuses, settings UI, restore UX | **TODO** |
 
-## Roadmap — logging & observability (v1)
+### P1 — Restore end-to-end
 
-- **Session log directory in the project:** persist operational logs under a dedicated path (e.g. `logs/sessions/<session_id>/` — task start/finish/retry, provider errors, restore milestones). Complement stdout/Docker logs; redact secrets; keep `logs/` out of git (`.gitignore`).
+| Item | Status |
+|------|--------|
+| Download all volumes by `part_number` | **TODO** |
+| 7z decrypt/extract with session `encryption_key` | **TODO** |
+| Write result to user-selected `dest_path` (fix staging bug) | **TODO** |
+| Restore statuses: success / `failed` | **TODO** |
+| Resume downloads | **TODO** (nice to have) |
 
-## Roadmap — post-v1 live provider verification (Telegram)
+### P2 — Observation & CI
 
-- **После релиза v1:** прогнать реальные upload/restore тесты (бот, целевая группа, локальный `telegram-bot-api`).
-- Зафиксировать, **через что Telegram отдаёт файл при скачивании** (цепочка Bot API: `sendDocument` → сохранённые id → `getFile` → URL/путь).
-- **Проверить схему `provider_download_ref`:** значение в `UploadResult` (например `file_unique_id`) vs обновление в `ProviderFileInfo` (`file_path`); достаточно ли `external_file_id` для restore; нужно ли поле в DTO/БД или схема нерабочая/избыточная.
-- По результатам обновить адаптер, `INTERNAL_SPEC.md`, DTO и миграции при необходимости.
+| Item | Status |
+|------|--------|
+| `import-linter` + layer contracts | **TODO** |
+| CI: add `lint-imports` step | **TODO** |
+| `src/observation/health.py` (postgres, redis, telegram) | **TODO** (optional) |
+| `logs/` in `.gitignore` for session logs | **TODO** |
 
-## Roadmap после v1
+### P3 — Tests & integration
 
-- Добавить адаптеры `Max` и `VK` по тому же контракту провайдера.
-- Ввести матрицу совместимости провайдеров (лимиты, типы каналов, особенности API).
-- Добавить тестовые contract-suite прогоны для каждого нового провайдера.
-- Сохранить единый UX приложения: одинаковая работа с очередью, сессиями и restore независимо от провайдера.
+| Item | Status |
+|------|--------|
+| `tests/test_worker_pipeline_integration.py` — full chain in Docker | **TODO** |
+| `tests/test_repositories_integration.py` — live PostgreSQL | **TODO** |
+| Live Telegram smoke (opt-in) after Client API | **TODO** |
 
-## Definition of Documentation Done
+### P4 — `domain` cleanup (deferred)
 
-- README описывает проект как мульти-мессенджерную платформу, а не Telegram-only продукт.
-- Явно зафиксировано, что `v1` реализуется на Telegram, но через универсальный контракт.
-- Разделены платформенные и Telegram-specific правила.
-- Описаны стек и операционные цели: устойчивость, наблюдаемость, тестируемость.
+| Item | Status |
+|------|--------|
+| Generic `ensure` / `mark` with `@overload` | **TODO** |
+| Scenario-first public API | **TODO** |
+| Merge `guards.py` + `scenarios.py` if justified | **TODO** |
+| Audit `domain/__init__.py` exports | **TODO** |
+
+### P5 — Docs sync
+
+| Item | Status |
+|------|--------|
+| [ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md) — Client API in runtime stack | **TODO** |
+| [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) — archive or trim | **TODO** |
+
+### Post-v1
+
+| Item | Status |
+|------|--------|
+| Max / VK storage adapters (`StorageProviderPort`) | **TODO** |
+| Provider compatibility matrix (limits, channels, API quirks) | **TODO** |
+| Contract test suite per provider | **TODO** |
+| Session log directory (`logs/sessions/<session_id>/`) | **TODO** |
+| Prometheus / Grafana metrics (optional) | **TODO** |
+| Kubernetes deploy for workers + Postgres (optional, far) | **TODO** |
+
+### Explicitly out of scope (v1)
+
+- Telegram topics (`message_thread_id`)
+- Auto-moving user source files into a service directory
+- Max / VK providers (port exists, no adapter yet)
