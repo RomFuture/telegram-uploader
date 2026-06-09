@@ -71,7 +71,8 @@ docker compose logs -f celery-worker-archive-1
 
 - [ ] **`scripts/run.sh`** (или `make demo`) — **один скрипт**: `docker compose up -d` + миграции + инструкция/GUI
 - [ ] **`.github/workflows/ci.yml`** — ruff, mypy, `pytest -m "not integration"` на push/PR
-- [ ] **README** — секция «Demo за 5 минут» (clone → `.env` → `./scripts/run.sh` → backup одного файла)
+- [x] **README** — setup from scratch (bot, API keys, group, `./scripts/run.sh`, smoke backup)
+- [ ] **Onboarding automation** — GUI wizard: API id/hash, bot, group id, `.env`; позже Client API login ([README](../README.md#onboarding-automation-planned))
 - [ ] Backup happy path работает *(уже есть)* · Client API / restore — по возможности, не блокер demo если backup стабилен
 
 **Gate P-demo:** друг (или ты на чистой машине) повторяет **одну команду** после clone; CI на `main` зелёный; smoke backup пройден.
