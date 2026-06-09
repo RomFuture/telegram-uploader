@@ -20,6 +20,7 @@ Linux desktop app for backing up files to messenger storage. **v1** is Telegram-
 | Client API provider | ❌ planned |
 | CI (GitHub Actions: ruff, mypy, pytest) | 🟡 `.github/workflows/ci.yml` |
 | CD (`.deb` package + safe upgrades) | ❌ planned — see § Packaging & CD |
+| AI agent skills (`.cursor/skills/`, vendor submodules) | 🟡 `docs/stop-slop` submodule — [AI_AGENT_SKILLS.md](AI_AGENT_SKILLS.md) |
 | `import-linter` / observation layer | ❌ |
 
 Unimplemented work: **[BACKLOG.md](BACKLOG.md)** (includes **stack vs CV** matrix from `~/еку.txt`).
@@ -36,6 +37,7 @@ Unimplemented work: **[BACKLOG.md](BACKLOG.md)** (includes **stack vs CV** matri
 | **[ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md)** | Layer structure, imports, folders — **source of truth** |
 | **[ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md)** | Gate, smoke, implementation cycle per layer — **mandatory** |
 | **[TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md)** | **Active plan:** Bot API → Client API (MTProto) |
+| **[AI_AGENT_SKILLS.md](AI_AGENT_SKILLS.md)** | Cursor skills layout, vendor submodules, `.cursor/skills/` TODO |
 
 ### Feature / migration plans
 

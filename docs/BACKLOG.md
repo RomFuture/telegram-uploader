@@ -211,6 +211,7 @@ docker compose logs -f celery-worker-archive-1
 
 ## P2 — Observation / CI
 
+- [ ] **AI agent skills** — [AI_AGENT_SKILLS.md](AI_AGENT_SKILLS.md): `.cursor/skills/` (onion-layers, gate-and-smoke); wire stop-slop for prose; clone `--recurse-submodules`
 - [ ] `import-linter` + `.importlinter` (adjacent-layer contracts)
 - [ ] `.github/workflows/ci.yml` — ruff, mypy, `pytest -m "not integration"`, `lint-imports`
 - [ ] `src/observation/health.py` (optional) — postgres, redis, telegram session
