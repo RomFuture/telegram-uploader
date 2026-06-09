@@ -6,7 +6,7 @@ def test_build_hashed_volume_name_is_stable() -> None:
     first_name = build_hashed_volume_name("holiday.mov", 1)
     second_name = build_hashed_volume_name("holiday.mov", 1)
     assert first_name == second_name
-    assert first_name.endswith(".7z.001")
+    assert first_name == "holiday.mov.7z.001"
 
 
 def test_build_hashed_volume_name_changes_for_different_sources() -> None:

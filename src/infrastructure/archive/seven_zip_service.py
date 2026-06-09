@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import secrets
 import shutil
@@ -18,8 +17,11 @@ def generate_archive_key(length: int = 32) -> str:
 
 
 def build_hashed_volume_name(display_name: str, part_number: int) -> str:
-    hashed = hashlib.sha256(display_name.encode("utf-8")).hexdigest()[:12]
-    return f"{hashed}.7z.{part_number:03d}"
+    # Hotfix: restore download is not working yet; users pull volumes from Telegram by hand.
+    # Hashed names are unreadable in the chat. Re-enable when restore ships.
+    # hashed = hashlib.sha256(display_name.encode("utf-8")).hexdigest()[:12]
+    # return f"{hashed}.7z.{part_number:03d}"
+    return f"{display_name}.7z.{part_number:03d}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +61,7 @@ class SevenZipService:
 
         Directory layout under output_dir/<scope>/:
           raw/       - volumes as produced by 7z (payload.7z.001, .002, …)
-          outgoing/  - volumes renamed with hashed display_name for upload
+          outgoing/  - volumes renamed for upload (display_name + part suffix; hash disabled hotfix)
           volume_manifest.json
         """
         output_dir.mkdir(parents=True, exist_ok=True)
