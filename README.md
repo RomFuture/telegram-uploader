@@ -27,8 +27,6 @@ Active refactor order: `use_cases`, then `infrastructure`, then `application`. D
 
 You need Linux, Docker, Docker Compose, Python 3.12+, Tkinter, and Git.
 
-### 1. Clone and install Python deps
-
 ```bash
 git clone --recurse-submodules git@github.com:RomFuture/telegram-uploader.git
 cd telegram-uploader
@@ -37,92 +35,21 @@ cd telegram-uploader
 
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-```
 
-### 2. Telegram: API id and hash
-
-These feed the local `telegram-bot-api` container (large file uploads).
-
-1. Open [my.telegram.org](https://my.telegram.org) and log in with your phone number.
-2. Open **API development tools**.
-3. Create an app (any name).
-4. Copy **api_id** and **api_hash** into `.env` as `TELEGRAM_API_ID` and `TELEGRAM_API_HASH`.
-
-### 3. Telegram: bot token
-
-1. In Telegram, open [@BotFather](https://t.me/BotFather).
-2. Send `/newbot`, pick a display name and a `@username`.
-3. Copy the token BotFather returns.
-4. Put it in `.env` as `TELEGRAM_BOT_TOKEN`.
-
-### 4. Telegram: backup group and chat id
-
-Backup volumes land in one group. The bot must post documents there.
-
-1. Create a **private group** in Telegram (v1 does not use topics).
-2. Add your bot to the group.
-3. Make the bot an **admin** with permission to send messages and files.
-4. Send any message in the group (so the chat exists for the API).
-5. Resolve the numeric **chat id** and set `TELEGRAM_TARGET_CHAT_ID` in `.env`.
-
-Common ways to get the id:
-
-- Forward a message from the group to [@userinfobot](https://t.me/userinfobot) or [@RawDataBot](https://t.me/RawDataBot) and read the chat id from the reply.
-- Or call `getUpdates` after messaging the group:
-
-```bash
-curl -s "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates" | python3 -m json.tool
-```
-
-Look for `"chat":{"id":...}`. Supergroups often look like `-1001234567890`.
-
-### 5. Configure `.env`
-
-```bash
 cp .env.example .env
 ```
 
-Edit at least these keys:
+**Telegram (bot, API keys, group, `.env`):** follow **[docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)**.
 
-| Variable | Value |
-|----------|-------|
-| `TELEGRAM_BOT_TOKEN` | token from BotFather |
-| `TELEGRAM_API_ID` | from my.telegram.org |
-| `TELEGRAM_API_HASH` | from my.telegram.org |
-| `TELEGRAM_TARGET_CHAT_ID` | numeric group id |
-| `TELEGRAM_BOT_API_URL` | `http://localhost:8081` (default; matches compose) |
-| `POSTGRES_PORT` | `5433` on the host if you already run Postgres on 5432 |
-
-Leave `ARCHIVE_ENCRYPTION_KEY` empty to auto-generate per session in the GUI, or set a fixed passphrase.
-
-Files you back up must live under `HOST_SOURCE_MOUNT` (default: your `$HOME`). Docker workers mount that path read-only at the same location inside the container.
-
-### 6. Run
+Then run:
 
 ```bash
 ./scripts/run.sh
 ```
 
-The script builds and starts Postgres, Redis, `telegram-bot-api`, Celery workers, restarts workers to pick up code changes, then opens the Tkinter GUI on the host.
+The script builds and starts Postgres, Redis, `telegram-bot-api`, Celery workers, restarts workers to pick up code changes, then opens the Tkinter GUI.
 
-Manual equivalent:
-
-```bash
-docker compose up -d --build
-PYTHONPATH=src .venv/bin/python -m application.gui
-```
-
-### 7. First backup (smoke)
-
-1. In the GUI: **Start Session** (profile name + optional encryption key).
-2. **Add File** → pick a file under `$HOME` → enter a **display name** (this is the label you will see on volumes in Telegram).
-3. **Start Backup** → **Refresh Progress**.
-4. Check the target group: you should see `your-display-name.7z.001` (or more parts for large files).
-5. Tail workers: `docker compose logs -f celery-worker-archive-1`.
-
-Restore from the app is not reliable yet. Download volumes from the group by hand if you need them back.
-
-> **Planned:** one-click onboarding in the GUI (bot creation, API credentials, group wiring, `.env` generation). Tracked under [Roadmap → Onboarding automation](#onboarding-automation-planned).
+Smoke: Start Session → Add File → Start Backup → Refresh Progress. Volumes should appear in your Telegram group as `display-name.7z.001`. See [TELEGRAM_SETUP.md § First backup](docs/TELEGRAM_SETUP.md#6-first-backup) and worker logs: `docker compose logs -f celery-worker-archive-1`.
 
 ## Architecture
 
@@ -171,6 +98,7 @@ docker compose logs -f celery-worker-archive-1
 | [docs/BACKLOG.md](docs/BACKLOG.md) | Open work |
 | [docs/INTERNAL_SPEC.md](docs/INTERNAL_SPEC.md) | Encryption, `display_name`, UI language |
 | [docs/ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md) | Layers and imports |
+| [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | Bot, API keys, group, `.env`, first backup |
 | [docs/TELEGRAM_CLIENT_API_MIGRATION.md](docs/TELEGRAM_CLIENT_API_MIGRATION.md) | Bot API → Client API |
 
 ---
@@ -179,7 +107,7 @@ docker compose logs -f celery-worker-archive-1
 
 ### Onboarding automation (planned)
 
-Today you create the bot, API app, group, and `.env` by hand (see [Setup from scratch](#setup-from-scratch)). Target UX:
+Today you create the bot, API app, group, and `.env` by hand ([TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)). Target UX:
 
 | Task | State |
 |------|-------|
@@ -195,7 +123,7 @@ Today you create the bot, API app, group, and `.env` by hand (see [Setup from sc
 |------|-------|
 | `scripts/run.sh`: Docker + GUI | Done |
 | `.github/workflows/ci.yml` | Partial |
-| README setup from scratch (bot, keys, group, smoke) | Done |
+| README + [TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | Done |
 | Backup happy path | Done |
 | Client API / restore for demo | Open |
 

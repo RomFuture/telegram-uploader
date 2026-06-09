@@ -36,6 +36,7 @@ Unimplemented work: **[BACKLOG.md](BACKLOG.md)** (includes **stack vs CV** matri
 | **[INTERNAL_SPEC.md](INTERNAL_SPEC.md)** | Product rules (encryption, `display_name`, English UI) |
 | **[ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md)** | Layer structure, imports, folders — **source of truth** |
 | **[ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md)** | Gate, smoke, implementation cycle per layer — **mandatory** |
+| **[TELEGRAM_SETUP.md](TELEGRAM_SETUP.md)** | Bot, API keys, backup group, `.env`, first backup |
 | **[TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md)** | **Active plan:** Bot API → Client API (MTProto) |
 | **[AI_AGENT_SKILLS.md](AI_AGENT_SKILLS.md)** | Cursor skills layout, vendor submodules, `.cursor/skills/` TODO |
 
@@ -43,6 +44,7 @@ Unimplemented work: **[BACKLOG.md](BACKLOG.md)** (includes **stack vs CV** matri
 
 | Plan | When to read |
 |------|----------------|
+| [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) | First-time Telegram + `.env` wiring |
 | [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md) | Replacing Telegram Bot API; restore download |
 
 Add new plans here as `docs/<NAME>_MIGRATION.md` or `docs/plans/<name>.md`.
