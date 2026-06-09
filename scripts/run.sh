@@ -4,7 +4,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-docker compose up -d
+docker compose up -d --build
+docker compose restart \
+  celery-worker-archive-1 \
+  celery-worker-archive-2 \
+  celery-worker-upload \
+  celery-worker-cleanup \
+  celery-worker-restore
 
 PYTHON="${ROOT}/.venv/bin/python"
 if [[ ! -x "$PYTHON" ]]; then

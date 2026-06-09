@@ -10,6 +10,8 @@ x-docker-runtime-env: &docker-runtime-env
 x-worker-volumes: &worker-volumes
   - ${HOST_SOURCE_MOUNT:-${HOME}}:${HOST_SOURCE_MOUNT:-${HOME}}:ro
   - archive-cache:/data/archive-cache
+  # Dev: host src overrides image copy so worker code changes apply without rebuild.
+  - ./src:/app/src:ro
 
 services:
   app:
@@ -20,6 +22,8 @@ services:
       - .env
     environment:
       <<: *docker-runtime-env
+    volumes:
+      - ./src:/app/src:ro
     depends_on:
       postgres:
         condition: service_healthy
