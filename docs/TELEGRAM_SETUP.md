@@ -156,6 +156,7 @@ docker compose logs -f celery-worker-upload
 
 | Symptom | Check |
 |---------|--------|
+| `telegram-bot-api` exits (1) / dependency failed to start | `.env` still has placeholders or empty `TELEGRAM_API_ID` / `TELEGRAM_API_HASH`; get both from [my.telegram.org](https://my.telegram.org). Run `docker compose logs telegram-bot-api` — expect *"You must provide valid api-id and api-hash"*. `./scripts/run.sh` now checks `.env` before compose. |
 | Bot cannot post to group | Bot is admin; group id is correct; bot was added before id lookup |
 | `getUpdates` empty | Message the group after adding the bot; try `/setprivacy` → Disable |
 | Upload fails / connection refused | `docker compose ps`; `TELEGRAM_BOT_API_URL` on host is `http://localhost:8081` |

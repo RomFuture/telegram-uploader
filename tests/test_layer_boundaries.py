@@ -83,7 +83,7 @@ def test_application_has_no_domain_or_use_cases_imports() -> None:
         assert not violations, f"{path}: {', '.join(violations)}"
 
 
-FORBIDDEN_DOMAIN_SUBMODULES = {"errors", "models", "factories", "actions", "guards", "scenarios"}
+FORBIDDEN_DOMAIN_SUBMODULES = {"errors", "models", "factories", "actions"}
 
 
 def _collect_domain_submodule_imports(path: Path) -> list[str]:

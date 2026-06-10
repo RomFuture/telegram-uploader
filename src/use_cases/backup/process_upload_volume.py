@@ -2,6 +2,11 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import domain as domain
+from use_cases.backup.gates import require_volume_created
+from use_cases.backup.idempotency import (
+    UploadStepAction,
+    decide_upload_on_retry,
+)
 from use_cases.mappers import domain_to_archive_volume_record, domain_to_source_item_record
 from use_cases.ports.storage_provider import StorageProviderPort
 from use_cases.ports.task_queue import TaskQueuePort
@@ -19,10 +24,22 @@ class ProcessUploadVolumeUseCase:
 
     def execute(self, archive_volume_id: UUID) -> None:
         volume = self.archive_volumes.require(archive_volume_id)
-        domain.prepare_archive_volume_for_upload(volume)
+        action = decide_upload_on_retry(volume)
 
-        uploading = domain.mark_archive_volume(volume, status=domain.ArchiveVolumeStatus.UPLOADING)
-        self.archive_volumes.update(domain_to_archive_volume_record(uploading))
+        if action == UploadStepAction.SKIP:
+            self.task_queue.enqueue_cleanup(volume.id)
+            return
+        if action == UploadStepAction.FAIL:
+            return
+
+        if action == UploadStepAction.RUN:
+            require_volume_created(volume)
+            uploading = domain.mark_archive_volume(
+                volume, status=domain.ArchiveVolumeStatus.UPLOADING
+            )
+            self.archive_volumes.update(domain_to_archive_volume_record(uploading))
+        else:
+            uploading = volume
 
         upload_result = self.storage_provider.upload_file(
             local_path=uploading.local_path,

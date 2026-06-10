@@ -5,6 +5,9 @@ from use_cases.backup import (
     EnqueueSourceItemUseCase,
     ProcessArchiveVolumeUseCase,
     ProcessUploadVolumeUseCase,
+    ReportArchiveFailureUseCase,
+    ReportCleanupFailureUseCase,
+    ReportUploadFailureUseCase,
     StartBackupPipelineUseCase,
 )
 from use_cases.mappers import (
@@ -16,7 +19,7 @@ from use_cases.mappers import (
     source_item_record_to_domain,
 )
 from use_cases.persistence import ArchiveVolumeRecord, SessionRecord, SourceItemRecord
-from use_cases.restore import RestoreSessionUseCase
+from use_cases.restore import ProcessRestoreVolumeUseCase, RestoreSessionUseCase
 from use_cases.session import CreateSessionUseCase
 from use_cases.types import ArchiveVolume, Session, SourceItem
 
@@ -27,7 +30,11 @@ __all__ = [
     "CreateSessionUseCase",
     "EnqueueSourceItemUseCase",
     "ProcessArchiveVolumeUseCase",
+    "ProcessRestoreVolumeUseCase",
     "ProcessUploadVolumeUseCase",
+    "ReportArchiveFailureUseCase",
+    "ReportCleanupFailureUseCase",
+    "ReportUploadFailureUseCase",
     "RestoreSessionUseCase",
     "Session",
     "SessionRecord",

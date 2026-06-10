@@ -10,8 +10,17 @@ from use_cases.backup.cleanup_volume import CleanupVolumeUseCase
 from use_cases.backup.enqueue_source_item import EnqueueSourceItemUseCase
 from use_cases.backup.process_archive_volume import ProcessArchiveVolumeUseCase
 from use_cases.backup.process_upload_volume import ProcessUploadVolumeUseCase
+from use_cases.backup.report_failure import (
+    ReportArchiveFailureUseCase,
+    ReportCleanupFailureUseCase,
+    ReportUploadFailureUseCase,
+)
 from use_cases.backup.start_backup_pipeline import StartBackupPipelineUseCase
-from use_cases.mappers import domain_to_session_record, source_item_record_to_domain
+from use_cases.mappers import (
+    domain_to_archive_volume_record,
+    domain_to_session_record,
+    source_item_record_to_domain,
+)
 from use_cases.ports.archive_service import ArchiveVolumePart
 from use_cases.session.create_session import CreateSessionUseCase
 
@@ -176,6 +185,302 @@ def test_start_backup_pipeline_enqueues_only_queued_items(
 
     assert enqueued == 1
     assert task_queue.archive_ids == [queued_item.id]
+
+
+def test_report_archive_failure_marks_source_item_failed(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    source_file = tmp_path / "payload.bin"
+    source_file.write_bytes(b"payload")
+    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        session.id,
+        source_file,
+        "Payload",
+    )
+
+    ReportArchiveFailureUseCase(repos.source_items).execute(item.id)
+
+    stored = repos.source_items.get(item.id)
+    assert stored is not None
+    assert stored.status == domain.SourceItemStatus.FAILED.value
+
+
+def test_report_upload_failure_marks_volume_and_uploading_item_failed(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    source_file = tmp_path / "payload.bin"
+    source_file.write_bytes(b"payload")
+    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        session.id,
+        source_file,
+        "Payload",
+    )
+
+    part = tmp_path / "part001.7z"
+    part.write_bytes(b"one")
+    ProcessArchiveVolumeUseCase(
+        sessions=repos.sessions,
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        archive_service=FakeArchiveService(
+            volumes=[ArchiveVolumePart(1, part, "hashed.7z.001")],
+        ),
+        task_queue=task_queue,
+        archive_cache_dir=tmp_path / "cache",
+    ).execute(item.id)
+
+    volume_id = task_queue.upload_ids[0]
+    ReportUploadFailureUseCase(repos.source_items, repos.archive_volumes).execute(volume_id)
+
+    volume = repos.archive_volumes.get(volume_id)
+    assert volume is not None
+    assert volume.status == domain.ArchiveVolumeStatus.FAILED.value
+
+    stored_item = repos.source_items.get(item.id)
+    assert stored_item is not None
+    assert stored_item.status == domain.SourceItemStatus.FAILED.value
+
+
+def test_retry_upload_skips_when_volume_already_uploaded(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    source_file = tmp_path / "payload.bin"
+    source_file.write_bytes(b"payload")
+    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        session.id,
+        source_file,
+        "Payload",
+    )
+
+    part = tmp_path / "part001.7z"
+    part.write_bytes(b"one")
+    ProcessArchiveVolumeUseCase(
+        sessions=repos.sessions,
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        archive_service=FakeArchiveService(volumes=[ArchiveVolumePart(1, part, "hashed.7z.001")]),
+        task_queue=task_queue,
+        archive_cache_dir=tmp_path / "cache",
+    ).execute(item.id)
+
+    storage = FakeStorageProvider()
+    volume_id = task_queue.upload_ids[0]
+    upload_uc = ProcessUploadVolumeUseCase(
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        storage_provider=storage,
+        task_queue=task_queue,
+        remote_target="-1001",
+    )
+    upload_uc.execute(volume_id)
+    task_queue.cleanup_ids.clear()
+    upload_uc.execute(volume_id)
+
+    assert len(storage.uploaded_display_names) == 1
+    assert volume_id in task_queue.cleanup_ids
+
+
+def test_retry_archive_skips_when_item_already_uploading(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    source_file = tmp_path / "payload.bin"
+    source_file.write_bytes(b"payload")
+    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        session.id,
+        source_file,
+        "Payload",
+    )
+
+    part = tmp_path / "part001.7z"
+    part.write_bytes(b"one")
+    archive_service = FakeArchiveService(volumes=[ArchiveVolumePart(1, part, "hashed.7z.001")])
+    archive_uc = ProcessArchiveVolumeUseCase(
+        sessions=repos.sessions,
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        archive_service=archive_service,
+        task_queue=task_queue,
+        archive_cache_dir=tmp_path / "cache",
+    )
+    archive_uc.execute(item.id)
+    archive_uc.execute(item.id)
+
+    assert archive_service.archive_calls == 1
+
+
+def test_retry_upload_continues_from_uploading_status(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    source_file = tmp_path / "payload.bin"
+    source_file.write_bytes(b"payload")
+    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        session.id,
+        source_file,
+        "Payload",
+    )
+
+    part = tmp_path / "part001.7z"
+    part.write_bytes(b"one")
+    ProcessArchiveVolumeUseCase(
+        sessions=repos.sessions,
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        archive_service=FakeArchiveService(volumes=[ArchiveVolumePart(1, part, "hashed.7z.001")]),
+        task_queue=task_queue,
+        archive_cache_dir=tmp_path / "cache",
+    ).execute(item.id)
+
+    volume_id = task_queue.upload_ids[0]
+    volume = repos.archive_volumes.require(volume_id)
+    uploading = domain.mark_archive_volume(volume, status=domain.ArchiveVolumeStatus.UPLOADING)
+    repos.archive_volumes.update(domain_to_archive_volume_record(uploading))
+
+    storage = FakeStorageProvider()
+    ProcessUploadVolumeUseCase(
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        storage_provider=storage,
+        task_queue=task_queue,
+        remote_target="-1001",
+    ).execute(volume_id)
+
+    stored = repos.archive_volumes.get(volume_id)
+    assert stored is not None
+    assert stored.status == domain.ArchiveVolumeStatus.UPLOADED.value
+
+
+def test_retry_cleanup_skips_when_item_already_completed(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    source_file = tmp_path / "payload.bin"
+    source_file.write_bytes(b"payload")
+    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        session.id,
+        source_file,
+        "Payload",
+    )
+
+    part = tmp_path / "part001.7z"
+    part.write_bytes(b"one")
+    ProcessArchiveVolumeUseCase(
+        sessions=repos.sessions,
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        archive_service=FakeArchiveService(volumes=[ArchiveVolumePart(1, part, "hashed.7z.001")]),
+        task_queue=task_queue,
+        archive_cache_dir=tmp_path / "cache",
+    ).execute(item.id)
+
+    storage = FakeStorageProvider()
+    volume_id = task_queue.upload_ids[0]
+    ProcessUploadVolumeUseCase(
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        storage_provider=storage,
+        task_queue=task_queue,
+        remote_target="-1001",
+    ).execute(volume_id)
+
+    cleanup_uc = CleanupVolumeUseCase(repos.source_items, repos.archive_volumes)
+    cleanup_uc.execute(volume_id)
+    cleanup_uc.execute(volume_id)
+
+    stored = repos.source_items.get(item.id)
+    assert stored is not None
+    assert stored.status == domain.SourceItemStatus.COMPLETED.value
+
+
+def test_report_upload_failure_is_idempotent(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    source_file = tmp_path / "payload.bin"
+    source_file.write_bytes(b"payload")
+    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        session.id,
+        source_file,
+        "Payload",
+    )
+
+    part = tmp_path / "part001.7z"
+    part.write_bytes(b"one")
+    ProcessArchiveVolumeUseCase(
+        sessions=repos.sessions,
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        archive_service=FakeArchiveService(volumes=[ArchiveVolumePart(1, part, "hashed.7z.001")]),
+        task_queue=task_queue,
+        archive_cache_dir=tmp_path / "cache",
+    ).execute(item.id)
+
+    volume_id = task_queue.upload_ids[0]
+    report_uc = ReportUploadFailureUseCase(repos.source_items, repos.archive_volumes)
+    report_uc.execute(volume_id)
+    report_uc.execute(volume_id)
+
+    volume = repos.archive_volumes.get(volume_id)
+    assert volume is not None
+    assert volume.status == domain.ArchiveVolumeStatus.FAILED.value
+
+
+def test_report_cleanup_failure_marks_cleanup_item_failed(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    source_file = tmp_path / "payload.bin"
+    source_file.write_bytes(b"payload")
+    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+        session.id,
+        source_file,
+        "Payload",
+    )
+
+    part = tmp_path / "part001.7z"
+    part.write_bytes(b"one")
+    ProcessArchiveVolumeUseCase(
+        sessions=repos.sessions,
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        archive_service=FakeArchiveService(volumes=[ArchiveVolumePart(1, part, "hashed.7z.001")]),
+        task_queue=task_queue,
+        archive_cache_dir=tmp_path / "cache",
+    ).execute(item.id)
+
+    ProcessUploadVolumeUseCase(
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        storage_provider=FakeStorageProvider(),
+        task_queue=task_queue,
+        remote_target="-1001",
+    ).execute(task_queue.upload_ids[0])
+
+    ReportCleanupFailureUseCase(repos.source_items).execute(item.id)
+
+    stored = repos.source_items.get(item.id)
+    assert stored is not None
+    assert stored.status == domain.SourceItemStatus.FAILED.value
 
 
 def test_process_archive_raises_on_invalid_status(

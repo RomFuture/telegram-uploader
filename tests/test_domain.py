@@ -81,58 +81,14 @@ def test_not_found_errors_carry_ids() -> None:
     assert str(volume_id) in volume_error.message
 
 
-def test_require_session_raises_domain_error() -> None:
-    session_id = uuid4()
-    with pytest.raises(domain.DomainError) as exc_info:
-        domain.require_session(None, session_id)
-    assert exc_info.value.code == "session_not_found"
-    assert exc_info.value.entity_id == session_id
-
-
-def test_require_source_item_raises_domain_error() -> None:
-    item_id = uuid4()
-    with pytest.raises(domain.DomainError) as exc_info:
-        domain.require_source_item(None, item_id)
-    assert exc_info.value.code == "source_item_not_found"
-    assert exc_info.value.entity_id == item_id
-
-
-def test_require_archive_volume_raises_domain_error() -> None:
-    volume_id = uuid4()
-    with pytest.raises(domain.DomainError) as exc_info:
-        domain.require_archive_volume(None, volume_id)
-    assert exc_info.value.code == "archive_volume_not_found"
-    assert exc_info.value.entity_id == volume_id
-
-
-def test_require_non_empty_volumes_raises_domain_error() -> None:
-    session_id = uuid4()
-    with pytest.raises(domain.DomainError) as exc_info:
-        domain.require_non_empty_volumes([], session_id)
-    error = exc_info.value
-    assert error.code == "archive_volume_not_found"
-    assert error.reason == "no_volumes"
-    assert error.entity_id == session_id
-
-
-def test_require_external_file_id_raises_domain_error() -> None:
-    volume_id = uuid4()
-    with pytest.raises(domain.DomainError) as exc_info:
-        domain.require_external_file_id(None, volume_id)
-    error = exc_info.value
-    assert error.code == "archive_volume_not_found"
-    assert error.reason == "missing_external_file_id"
-    assert error.entity_id == volume_id
-
-
-def test_ensure_source_item_queued_raises_domain_error() -> None:
+def test_verify_source_item_queued_raises_domain_error() -> None:
     session_id = domain.create_session("default", "secret").id
     item = domain.mark_source_item(
         domain.create_source_item(session_id, Path("/tmp/a.bin"), "A"),
         status=domain.SourceItemStatus.ARCHIVING,
     )
     with pytest.raises(domain.DomainError) as exc_info:
-        domain.ensure_source_item(item, status=domain.SourceItemStatus.QUEUED)
+        domain.verify_source_item(item, status=domain.SourceItemStatus.QUEUED)
     assert exc_info.value.code == "invalid_status_transition"
 
 
@@ -145,22 +101,13 @@ def test_public_api_exports_status_enums() -> None:
         "create_archive_volume",
         "create_session",
         "create_source_item",
-        "ensure_archive_volume",
-        "ensure_session",
-        "ensure_source_item",
-        "external_file_id_for_restore",
+        "verify_archive_volume",
+        "verify_session",
+        "verify_source_item",
         "is_source_item",
         "mark_archive_volume",
         "mark_archive_volume_uploaded",
         "mark_session",
         "mark_source_item",
-        "prepare_archive_volume_for_upload",
-        "prepare_session_for_backup",
-        "prepare_source_item_for_archive",
-        "require_archive_volume",
-        "require_external_file_id",
-        "require_non_empty_volumes",
-        "require_session",
-        "require_source_item",
     }
 

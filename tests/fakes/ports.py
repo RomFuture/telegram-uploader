@@ -35,6 +35,7 @@ class FakeArchiveService:
     def __init__(self, volumes: list[ArchiveVolumePart] | None = None) -> None:
         self._volumes = volumes or []
         self.last_display_name: str | None = None
+        self.archive_calls = 0
 
     def archive(
         self,
@@ -45,6 +46,7 @@ class FakeArchiveService:
         *,
         source_item_id: str | None = None,
     ) -> ArchiveServiceResult:
+        self.archive_calls += 1
         self.last_display_name = display_name
         work_dir = output_dir / (source_item_id or "test-scope")
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -62,6 +64,7 @@ class FakeStorageProvider:
     def __init__(self) -> None:
         self.uploaded_display_names: list[str] = []
         self.downloaded_files: list[Path] = []
+        self.requested_refs: list[str] = []
 
     def healthcheck(self, remote_target: str) -> bool:
         return bool(remote_target)
@@ -78,6 +81,7 @@ class FakeStorageProvider:
         )
 
     def get_file_info(self, external_file_id: str) -> ProviderFileInfo:
+        self.requested_refs.append(external_file_id)
         return ProviderFileInfo(
             provider_name="fake",
             external_file_id=external_file_id,

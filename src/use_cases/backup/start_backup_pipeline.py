@@ -1,7 +1,10 @@
+"""Start or resume a backup session; enqueue archive for all ``queued`` items."""
+
 from dataclasses import dataclass
 from uuid import UUID
 
 import domain as domain
+from use_cases.backup.gates import require_session_running
 from use_cases.mappers import domain_to_session_record
 from use_cases.ports.task_queue import TaskQueuePort
 from use_cases.repositories import Repositories
@@ -9,6 +12,7 @@ from use_cases.repositories import Repositories
 
 @dataclass(frozen=True, slots=True)
 class StartBackupPipelineUseCase:
+    # Repositories bundle: needs session + all source items for the session in one inject.
     repos: Repositories
     task_queue: TaskQueuePort
 
@@ -18,7 +22,7 @@ class StartBackupPipelineUseCase:
             session = domain.mark_session(session, status=domain.SessionStatus.RUNNING)
             self.repos.sessions.update(domain_to_session_record(session))
         else:
-            domain.prepare_session_for_backup(session)
+            require_session_running(session)
 
         enqueued = 0
         for item in self.repos.source_items.list_domain_by_session(session_id):

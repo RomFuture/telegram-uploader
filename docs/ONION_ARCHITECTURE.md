@@ -125,7 +125,7 @@ flowchart LR
   end
   subgraph domain_layer [domain]
     Models[models.py]
-    Actions[actions.py scenarios.py]
+    Actions[actions.py errors.py]
   end
   subgraph use_cases_layer [use_cases]
     UC[EnqueueSourceItemUseCase]
@@ -163,7 +163,7 @@ flowchart LR
 
 ### Слой 1 — `domain` (центр)
 
-**Роль:** самый внутренний слой. Top-level пакет [`src/domain/`](../src/domain/). Нет оркестрации и I/O — модели, статусы, guards, actions, scenarios.
+**Роль:** самый внутренний слой. Top-level пакет [`src/domain/`](../src/domain/). Только модели, статусы, `create` / `verify` / `mark`, `DomainError`. Без пайплайна, без Celery, без restore-логики.
 
 | Сущность | Назначение |
 |----------|------------|
@@ -179,18 +179,18 @@ flowchart LR
 |--------|------|
 | `models.py` | entity + enums + internal `.create()` |
 | `errors.py` | `DomainError` + factory classmethods |
-| `actions.py` | `create_*`, `ensure_*`, `mark_*`, `is_*` |
-| `guards.py` | `require_*` — not-found (via `use_cases/repositories/loading.py`) |
-| `scenarios.py` | `prepare_*` — pipeline entry points |
+| `actions.py` | `create_*`, `verify_*`, `mark_*`, `is_*` |
 
-Публичный API: `create_*`, `mark_*`, `prepare_*`, `is_*`, status enums, `DomainError`.
+Публичный API: `create_*`, `mark_*`, `verify_*`, `is_*`, status enums, `DomainError`.
+
+**Не в domain:** not-found → `repositories/loading.py`; backup gates → `backup/gates.py`; idempotency → `backup/idempotency.py`; restore refs → `restore/refs.py`.
 
 | Можно | Нельзя |
 |-------|--------|
 | `dataclass`, `Enum`, чистые функции над моделями | SQL, HTTP, SQLAlchemy, Celery, Telegram API |
 | импорт только stdlib | импорт `use_cases`, `ports`, `persistence`, `infrastructure`, `application` |
 
-**Готовность:** ✅ [`src/domain/`](../src/domain/).
+**Готовность:** ✅ [`src/domain/`](../src/domain/) — **слой закрыт** (2026-06). Дальнейшая чистка: `use_cases` → `infrastructure` → `application` ([BACKLOG.md](BACKLOG.md)).
 
 ---
 
@@ -204,7 +204,8 @@ flowchart LR
 |-------|--------|
 | `import domain as domain` в use case-классах | `from domain.models import ...` в `backup/` / `session/` / `restore/` |
 | `use_cases/mappers.py`, `repositories/loading.py` | `import domain` из `infrastructure` / `application` |
-| `domain.require_*`, `domain.ensure_*`, `domain.create_*` | `raise *NotFound` / `raise InvalidStatusTransition` в use cases |
+| `domain.verify_*`, `domain.create_*`, `domain.mark_*` | `raise *NotFound` в use cases (кроме `repositories/loading.py`) |
+| `backup/gates.py`, `backup/idempotency.py`, `restore/refs.py` | pipeline-правила и идемпотентность в `domain` |
 | `persistence.py` — записи для контракта с infrastructure | `infrastructure.*`, `application.*` |
 | `Protocol` (порты репозиториев и сервисов) | SQLAlchemy, `psycopg`, `urllib`, `7z` subprocess |
 | DTO (`UploadResult`, `ProviderFileInfo`, …) | конкретные реализации `TelegramProviderV1` |
@@ -236,7 +237,7 @@ flowchart LR
 |-------|--------|
 | `use_cases.*` (порты, persistence, use case-классы) | `use_cases.domain` (модели домена) |
 | создавать use cases, инжектить реализации портов | `application.*` |
-| SQLAlchemy, Celery, HTTP, subprocess | бизнес-правила backup (статусы, политика ретраев) |
+| SQLAlchemy, Celery, HTTP, subprocess | бизнес-правила backup (статусы, идемпотентность шагов) |
 | ORM ↔ persistence-запись в `infrastructure/db/mappers.py` | |
 
 **Готовность:** backup pipeline wired (`facade`, `bootstrap`, workers). Restore download — Client API migration ([BACKLOG.md](BACKLOG.md)).
@@ -249,7 +250,7 @@ flowchart LR
 
 | Компонент | Назначение |
 |-----------|------------|
-| `application/gui/` | экраны: сессия, очередь, прогресс, restore, настройки |
+| `application/gui/` | Unlock, file explorer, progress drawer, restore, settings — см. [ONION_LAYER_IMPLEMENTATION.md §7](ONION_LAYER_IMPLEMENTATION.md#7-целевой-gui-application--p03) |
 | `application/backend_receiver.py` | прослойка: событие GUI → `infrastructure.facade` → UI-DTO |
 
 **Пакет:** [`src/application/`](../src/application/)
@@ -292,15 +293,13 @@ src/
   domain/                     # слой 1 (ядро)
     models.py                 # Session, SourceItem, ArchiveVolume + enums
     errors.py                 # DomainError
-    actions.py                # create_*, ensure_*, mark_*
-    guards.py                 # require_* (internal; via repo loading)
-    scenarios.py              # prepare_* pipeline entry points
+    actions.py                # create_*, verify_*, mark_*
 
   use_cases/
     persistence.py            # SessionRecord, SourceItemRecord, ArchiveVolumeRecord
     mappers.py                # persistence record ↔ domain entity
     repositories/
-      loading.py              # get + map + domain guard
+      loading.py              # get + map + not-found raises
     ports/
       storage_provider.py     # StorageProviderPort (Protocol)
       archive_service.py      # (future) ArchiveServicePort
@@ -309,8 +308,13 @@ src/
       source_item.py          # SourceItemRepository (Protocol)
       archive_volume.py       # ArchiveVolumeRepository (Protocol)
     dto.py                    # UploadResult, ProviderFileInfo, ...
-    backup/                   # (future) EnqueueSourceItemUseCase, ...
-    restore/                  # (future) RestoreSessionUseCase
+    backup/
+      gates.py                # require_* — статус перед шагом
+      idempotency.py          # decide_*_on_retry — повторный запуск шага
+      ...                     # ProcessArchiveVolumeUseCase, ...
+    restore/
+      refs.py                 # restore_download_ref
+      ...                     # DownloadVolumeUseCase, ...
     session/                  # (future) CreateSessionUseCase, PauseSessionUseCase
 
   infrastructure/

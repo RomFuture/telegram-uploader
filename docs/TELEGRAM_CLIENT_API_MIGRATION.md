@@ -117,7 +117,7 @@ flowchart LR
 
 ### Изменения в use_cases (минимальные)
 
-- `domain.external_file_id_for_restore` → расширить до `restore_ref_for_volume(volume)`:
+- `use_cases.restore.refs.restore_download_ref` → расширить до `restore_ref_for_volume(volume)`:
   - приоритет `provider_download_ref` (client ref)
   - fallback: `external_message_id` + `TELEGRAM_TARGET_CHAT_ID` из config
 - Сигнатуру `StorageProviderPort` можно **не менять**, если `get_file_info(ref)` принимает opaque string.

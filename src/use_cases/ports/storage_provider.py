@@ -25,6 +25,3 @@ class StorageProviderPort(Protocol):
 
     def provider_limits(self) -> ProviderLimits:
         """Return declared provider limits (size/rate/download capabilities)."""
-
-
-MessageProvider = StorageProviderPort

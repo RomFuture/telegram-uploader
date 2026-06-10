@@ -39,7 +39,13 @@ python3 -m venv .venv
 cp .env.example .env
 ```
 
-**Telegram (bot, API keys, group, `.env`):** follow **[docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)**.
+**Telegram (v1, Bot API):** backup still runs through a **bot** and a local **`telegram-bot-api`** container. Fill `.env` using **[docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)** before first run.
+
+| Variable | Source |
+|----------|--------|
+| `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | [my.telegram.org](https://my.telegram.org) — powers `telegram-bot-api` in Docker |
+| `TELEGRAM_BOT_TOKEN` | [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_TARGET_CHAT_ID` | Numeric id of your private backup group |
 
 Then run:
 
@@ -47,9 +53,26 @@ Then run:
 ./scripts/run.sh
 ```
 
-The script builds and starts Postgres, Redis, `telegram-bot-api`, Celery workers, restarts workers to pick up code changes, then opens the Tkinter GUI.
+The script checks `.env` for placeholder/missing Telegram keys **before** `docker compose up`, then starts Postgres, Redis, `telegram-bot-api`, Celery workers, restarts workers to pick up code changes, and opens the Tkinter GUI.
 
 Smoke: Start Session → Add File → Start Backup → Refresh Progress. Volumes should appear in your Telegram group as `display-name.7z.001`. See [TELEGRAM_SETUP.md § First backup](docs/TELEGRAM_SETUP.md#6-first-backup) and worker logs: `docker compose logs -f celery-worker-archive-1`.
+
+### `telegram-bot-api` fails to start
+
+If `docker compose up` reports `dependency telegram-bot-api failed to start` (container exit 1), `.env` still has empty or placeholder values — usually `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` left as `change_me` after `cp .env.example .env`.
+
+```bash
+docker compose logs telegram-bot-api
+# → "You must provide valid api-id and api-hash obtained at https://my.telegram.org"
+```
+
+Fix: set real `api_id` (numeric) and `api_hash` from [my.telegram.org](https://my.telegram.org), plus bot token and group id — see [TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md). `./scripts/run.sh` should catch this early and point to the same guide.
+
+### Telegram provider: Bot API now, Client API next
+
+v1 backup uses **Bot API** (`TelegramProviderV1` + `telegram-bot-api`). **Restore download is unreliable** on this stack (HTTP 404). The planned replacement is **Client API (MTProto)** with a user session — different auth (phone login, session file), no `telegram-bot-api` container, stable upload/download from the target group.
+
+We are **not investing further in Bot API onboarding polish** (wizard, extra setup automation) until that migration lands. For now, manual [TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) is enough to run backup; active plan: **[TELEGRAM_CLIENT_API_MIGRATION.md](docs/TELEGRAM_CLIENT_API_MIGRATION.md)**.
 
 ## Architecture
 
@@ -105,17 +128,16 @@ docker compose logs -f celery-worker-archive-1
 
 ## Roadmap
 
-### Onboarding automation (planned)
+### Onboarding automation (deferred until Client API)
 
-Today you create the bot, API app, group, and `.env` by hand ([TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)). Target UX:
+Today you create the bot, API app, group, and `.env` by hand ([TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)). `./scripts/run.sh` validates required keys before compose. **Bot API–specific wizard work is on hold** — credentials and auth will change with Client API (phone + session instead of bot token + local Bot API server).
 
 | Task | State |
 |------|-------|
-| GUI wizard: link my.telegram.org, paste or store API id/hash | Open |
-| Bot creation flow or guided BotFather steps | Open |
-| Pick or create backup group; resolve `TELEGRAM_TARGET_CHAT_ID` | Open |
-| Write `.env` / app config; validate with provider healthcheck | Open |
-| Client API: phone login + session file (replaces manual bot setup) | Open ([migration](docs/TELEGRAM_CLIENT_API_MIGRATION.md)) |
+| `.env` preflight in `scripts/run.sh` | Done |
+| GUI wizard for Bot API (my.telegram.org, BotFather, group id) | **Deferred** — superseded by Client API plan |
+| Client API: phone login + session file | Open ([migration](docs/TELEGRAM_CLIENT_API_MIGRATION.md)) |
+| Write `.env` / app config from wizard; provider healthcheck | Open (after Client API) |
 
 ### P-demo
 
@@ -176,7 +198,7 @@ Work order: `use_cases` → `infrastructure` → `application`.
 
 | Task | State |
 |------|-------|
-| Generic `ensure` / `mark` with `@overload` | Open |
+| Generic `verify` / `mark` with `@overload` | Open |
 | Scenario-first public API | Open |
 | Merge `guards.py` + `scenarios.py` if it pays off | Open |
 | Audit `domain/__init__.py` exports | Open |

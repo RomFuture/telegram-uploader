@@ -1,6 +1,4 @@
-"""
-Data Transfer Objects for the application layer.
-"""
+"""DTOs shared by use_cases ports and infrastructure provider adapters."""
 from dataclasses import dataclass
 from enum import Enum
 

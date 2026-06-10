@@ -8,7 +8,6 @@ src/application/gui/app.py
 src/domain/__init__.py
 src/domain/actions.py
 src/domain/errors.py
-src/domain/guards.py
 src/domain/models.py
 src/domain/scenarios.py
 src/infrastructure/__init__.py
@@ -45,6 +44,7 @@ src/use_cases/backup/cleanup_volume.py
 src/use_cases/backup/enqueue_source_item.py
 src/use_cases/backup/process_archive_volume.py
 src/use_cases/backup/process_upload_volume.py
+src/use_cases/backup/report_failure.py
 src/use_cases/backup/start_backup_pipeline.py
 src/use_cases/ports/__init__.py
 src/use_cases/ports/archive_service.py
@@ -56,6 +56,7 @@ src/use_cases/repositories/loading.py
 src/use_cases/repositories/session.py
 src/use_cases/repositories/source_item.py
 src/use_cases/restore/__init__.py
+src/use_cases/restore/download_volume.py
 src/use_cases/restore/process_restore_volume.py
 src/use_cases/restore/restore_session.py
 src/use_cases/session/__init__.py
@@ -72,6 +73,7 @@ tests/test_migrate_unit.py
 tests/test_provider_contract.py
 tests/test_repositories.py
 tests/test_repositories_integration.py
+tests/test_repositories_loading.py
 tests/test_smoke.py
 tests/test_telegram_multipart.py
 tests/test_telegram_provider.py

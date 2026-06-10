@@ -3,14 +3,13 @@ from use_cases.ports.archive_service import (
     ArchiveServiceResult,
     ArchiveVolumePart,
 )
-from use_cases.ports.storage_provider import MessageProvider, StorageProviderPort
+from use_cases.ports.storage_provider import StorageProviderPort
 from use_cases.ports.task_queue import TaskQueuePort
 
 __all__ = [
     "ArchiveServicePort",
     "ArchiveServiceResult",
     "ArchiveVolumePart",
-    "MessageProvider",
     "StorageProviderPort",
     "TaskQueuePort",
 ]

@@ -13,7 +13,10 @@ Linux desktop app for backing up files to messenger storage. **v1** is Telegram-
 
 | Area | Status |
 |------|--------|
-| Onion layers: `domain` → `use_cases` → `infrastructure` → `application` | ✅ |
+| **`domain` layer cleanup** | ✅ **done** (2026-06) — see [BACKLOG § P4](BACKLOG.md) |
+| **`use_cases` layer cleanup** | 🟡 **in progress** (P0.1) |
+| **`infrastructure` layer cleanup** | ❌ P0.2 — Client API, Celery failure wiring |
+| **`application` / GUI** | ❌ P0.3 |
 | Backup: GUI → workers → Telegram → `completed` | ✅ |
 | Restore download (Bot API) | ❌ HTTP 404 |
 | Restore extract (7z → original file) | ❌ |
@@ -25,7 +28,15 @@ Linux desktop app for backing up files to messenger storage. **v1** is Telegram-
 
 Unimplemented work: **[BACKLOG.md](BACKLOG.md)** (includes **stack vs CV** matrix from `~/еку.txt`).
 
-**How we work:** architecture cleanup **use_cases → infrastructure → application** (see BACKLOG § rules). After each change — run the app yourself and smoke-test before moving on.
+**How we work:** `domain` is closed; architecture cleanup continues **use_cases → infrastructure → application** (see [BACKLOG](BACKLOG.md) § rules). After each change — run the app yourself and smoke-test before moving on.
+
+### AI agents (Cursor)
+
+All **agent outputs must be in English** — chat replies, explanations, doc edits, commit/PR text, code comments added by the agent, and session summaries. This matches the product language policy ([INTERNAL_SPEC.md](INTERNAL_SPEC.md)) and keeps repo prose consistent (README, `docs/`, skills).
+
+The human maintainer may write in any language; agents still respond in English unless explicitly asked otherwise for a one-off message.
+
+Skills and workflow: [AI_AGENT_SKILLS.md](AI_AGENT_SKILLS.md) · gate/smoke: [ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md).
 
 ## Documentation map
 
@@ -35,9 +46,10 @@ Unimplemented work: **[BACKLOG.md](BACKLOG.md)** (includes **stack vs CV** matri
 | **[BACKLOG.md](BACKLOG.md)** | Everything not implemented yet |
 | **[INTERNAL_SPEC.md](INTERNAL_SPEC.md)** | Product rules (encryption, `display_name`, English UI) |
 | **[ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md)** | Layer structure, imports, folders — **source of truth** |
-| **[ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md)** | Gate, smoke, implementation cycle per layer — **mandatory** |
+| **[ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md)** | Gate, smoke, implementation cycle per layer — **mandatory**; §7 target GUI mockup |
 | **[TELEGRAM_SETUP.md](TELEGRAM_SETUP.md)** | Bot, API keys, backup group, `.env`, first backup |
 | **[TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md)** | **Active plan:** Bot API → Client API (MTProto) |
+| **[BACKUPVAULT_IMPLEMENTATION.md](BACKUPVAULT_IMPLEMENTATION.md)** | **Side project (future):** separate `backupvault` repo + DevOps partner — not v1 scope |
 | **[AI_AGENT_SKILLS.md](AI_AGENT_SKILLS.md)** | Cursor skills layout, vendor submodules, `.cursor/skills/` TODO |
 
 ### Feature / migration plans

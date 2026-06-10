@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
-import domain as domain
 from use_cases.ports.storage_provider import StorageProviderPort
 from use_cases.repositories.archive_volume import ArchiveVolumeRepository
+from use_cases.restore.download_volume import download_volume_to_dir
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,10 +21,7 @@ class RestoreSessionUseCase:
 
         downloaded: list[Path] = []
         for volume in volumes:
-            external_file_id = domain.external_file_id_for_restore(volume)
-            file_info = self.storage_provider.get_file_info(external_file_id)
-            target = self.staging_dir / volume.file_name
-            self.storage_provider.download_file(file_info, target)
+            target = download_volume_to_dir(volume, self.storage_provider, self.staging_dir)
             downloaded.append(target)
 
         return downloaded

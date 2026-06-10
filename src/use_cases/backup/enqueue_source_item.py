@@ -1,3 +1,9 @@
+"""Enqueue a source file and immediately schedule archive (eager path).
+
+``StartBackupPipelineUseCase`` re-enqueues only ``queued`` items (batch start).
+Both paths are intentional: add-file can archive before the user clicks Start Backup.
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID

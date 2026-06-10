@@ -19,10 +19,10 @@
 **Снизу вверх по onion** (не наоборот):
 
 ```
-use_cases  →  infrastructure  →  application
+domain  ✅  →  use_cases  →  infrastructure  →  application
 ```
 
-`domain` трогаем только если use_cases вскрыл проблему в ядре. GUI — на этапе `application`, после того как низ стабилен.
+**`domain` закрыт (2026-06):** три файла (`models`, `actions`, `errors`), без пайплайна и persistence. Дальше — только если use_cases вскроет дыру в ядре. GUI — на этапе `application`, после стабильного низа.
 
 Каждый слой — **отдельная сессия**: смотрим вместе, правим, прогоняем тесты, **ты сам** гоняешь приложение.
 
@@ -166,7 +166,9 @@ docker compose logs -f celery-worker-archive-1
 
 - [ ] Аудит пакета: дубли, лишние зависимости, согласованность портов и `*Record`
 - [ ] Выровнять restore/upload ref helpers под будущий Client API (см. [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md))
-- [ ] Failed-status / idempotency policy в use cases (не в `tasks.py`)
+- [x] Pipeline rules вынесены из `domain`: `backup/gates.py`, `backup/idempotency.py`, `restore/refs.py`
+- [x] Idempotency policy в `use_cases/backup/idempotency.py` (не в `domain`, не в `tasks.py`)
+- [ ] Failed-status wiring в Celery `tasks.py` (P0.2)
 - [ ] Убрать tech debt, вскрытый при ревью (мапперы, loading, дубли в backup/restore)
 - [ ] Тесты после каждого блока правок: `pytest tests/test_use_cases_*.py -v`
 
@@ -230,14 +232,15 @@ docker compose logs -f celery-worker-archive-1
 
 ---
 
-## P4 — `domain` cleanup (deferred)
+## ~~P4 — `domain` cleanup~~ ✅ закрыт (2026-06)
 
-**Gate:** P0.1 use_cases review не выявил блокеров в domain; restore e2e стабилен.
+**Итог:** ядро = `models.py` + `actions.py` + `errors.py`. Вынесено в `use_cases`: not-found (`loading`), backup gates, idempotency, restore refs. `guards.py` / `scenarios.py` удалены.
 
-- [ ] Generic `ensure` / `mark` with `@overload`
-- [ ] Scenario-first public API
-- [ ] Merge `guards.py` + `scenarios.py` (если оправдано)
-- [ ] Audit `domain/__init__.py` exports
+**Gate закрыт:** границы зафиксированы в [ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md) и `tests/test_layer_boundaries.py`; 77 unit-тестов зелёные.
+
+Опционально позже (не блокер): generic `verify`/`mark` с `@overload` — только если при ревью `use_cases` станет больно без этого.
+
+**Следующие слои:** P0.1 `use_cases` → P0.2 `infrastructure` → P0.3 `application` → P2 observation.
 
 ---
 
@@ -245,6 +248,12 @@ docker compose logs -f celery-worker-archive-1
 
 - [ ] [ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md) — Client API в runtime stack, актуальные диаграммы
 - [ ] Root [IMPLEMENTATION_GUIDE.md](../IMPLEMENTATION_GUIDE.md) — archive or trim
+
+---
+
+## Side projects (future — not v1 backlog)
+
+- **[BACKUPVAULT_IMPLEMENTATION.md](BACKUPVAULT_IMPLEMENTATION.md)** — joint DevOps learning with a partner; separate `backupvault` repo; return after v1 gate. **No code changes in telegram-uploader required until then.**
 
 ---
 

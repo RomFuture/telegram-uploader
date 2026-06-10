@@ -3,12 +3,20 @@ from pathlib import Path
 from uuid import UUID
 
 import domain as domain
+from use_cases.backup.gates import require_item_queued
+from use_cases.backup.idempotency import (
+    ArchiveStepAction,
+    UploadStepAction,
+    decide_archive_on_retry,
+    decide_upload_on_retry,
+)
 from use_cases.mappers import domain_to_archive_volume_record, domain_to_source_item_record
 from use_cases.ports.archive_service import ArchiveServicePort
 from use_cases.ports.task_queue import TaskQueuePort
 from use_cases.repositories.archive_volume import ArchiveVolumeRepository
 from use_cases.repositories.session import SessionRepository
 from use_cases.repositories.source_item import SourceItemRepository
+from use_cases.types import SourceItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,8 +30,17 @@ class ProcessArchiveVolumeUseCase:
 
     def execute(self, source_item_id: UUID) -> None:
         item = self.source_items.require(source_item_id)
-        domain.prepare_source_item_for_archive(item)
+        action = decide_archive_on_retry(item)
 
+        if action == ArchiveStepAction.SKIP:
+            return
+        if action == ArchiveStepAction.FAIL:
+            return
+        if action == ArchiveStepAction.RESUME:
+            self._resume_uploads(item)
+            return
+
+        require_item_queued(item)
         session = self.sessions.require(item.session_id)
 
         archiving = domain.mark_source_item(item, status=domain.SourceItemStatus.ARCHIVING)
@@ -49,3 +66,24 @@ class ProcessArchiveVolumeUseCase:
 
         uploading = domain.mark_source_item(archiving, status=domain.SourceItemStatus.UPLOADING)
         self.source_items.update(domain_to_source_item_record(uploading))
+
+    def _resume_uploads(self, item: SourceItem) -> None:
+        volumes = self.archive_volumes.list_domain_by_source_item(item.id)
+        if not volumes:
+            raise domain.DomainError.invalid_status_transition(
+                "SourceItem",
+                item.status.value,
+                "archiving with persisted volumes",
+            )
+
+        for volume in volumes:
+            upload_action = decide_upload_on_retry(volume)
+            if upload_action in (
+                UploadStepAction.RUN,
+                UploadStepAction.CONTINUE,
+            ):
+                self.task_queue.enqueue_upload(volume.id)
+
+        if domain.is_source_item(item, status=domain.SourceItemStatus.ARCHIVING):
+            uploading = domain.mark_source_item(item, status=domain.SourceItemStatus.UPLOADING)
+            self.source_items.update(domain_to_source_item_record(uploading))
