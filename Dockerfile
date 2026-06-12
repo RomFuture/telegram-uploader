@@ -10,9 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends p7zip-full && \
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-COPY tests ./tests
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -e ".[dev]"
+    pip install --no-cache-dir -e .
 
 CMD ["python", "-m", "infrastructure.bootstrap"]
