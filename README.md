@@ -62,14 +62,27 @@ Smoke: Start Session → Add File → Start Backup → Refresh Progress. Volumes
 
 Download the latest `.deb` from [GitHub Releases](https://github.com/RomFuture/telegram-uploader/releases) (built automatically on tag `v*`, version synced with `pyproject.toml`).
 
-**Prefer `apt install`** — it pulls Docker and other dependencies automatically:
+**Platform:** Ubuntu 24.04 **amd64** only. Needs Docker, Python 3.12+, Tkinter, and 7z (listed as package dependencies).
+
+### Clean install (first time)
+
+**1. System packages and `.deb`**
+
+Prefer `apt install ./…deb` — it pulls dependencies automatically:
 
 ```bash
 sudo apt update
 sudo apt install ./telegram-uploader_<version>_amd64.deb
-telegram-uploader-check-deps   # optional: verify Docker daemon, Python, 7z
-telegram-uploader --setup
-telegram-uploader
+telegram-uploader-check-deps
+```
+
+If `check-deps` warns that Docker is not reachable:
+
+```bash
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+# log out and back in (or reboot), then:
+telegram-uploader-check-deps
 ```
 
 If you used `dpkg -i` alone and dependencies are missing:
@@ -80,9 +93,47 @@ sudo apt install docker.io docker-compose-plugin python3-venv python3-tk p7zip-f
 telegram-uploader-check-deps
 ```
 
-Avoid `sudo dpkg -i` without `apt -f install` — Docker may not be installed (common on fresh Linux).
+Avoid `sudo dpkg -i` without `apt -f install` — Docker may not be installed on a fresh system.
 
-Config: `~/.config/telegram-uploader/.env` (created on first run via `telegram-uploader --setup`). Application files: `/opt/telegram-uploader/`.
+**2. App config file**
+
+```bash
+telegram-uploader --setup
+```
+
+Creates `~/.config/telegram-uploader/.env` (one time).
+
+**3. Telegram credentials (before backup works)**
+
+Prepare on [my.telegram.org](https://my.telegram.org) and in Telegram:
+
+| What | Where |
+|------|--------|
+| API ID + API hash | [my.telegram.org](https://my.telegram.org) → API development tools |
+| Backup group | Private group; your account must be a member |
+| Target chat ID | Supergroup id, usually `-100…` (not your personal user id) |
+
+Full walkthrough: [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md).
+
+**4. Start the app**
+
+```bash
+telegram-uploader
+```
+
+This starts Postgres, Redis, Celery workers (Docker), applies DB migrations, and opens the GUI.
+
+**5. GUI onboarding**
+
+1. **Unlock** — enter encryption key if you set one in Settings later.
+2. **Settings → Client API** — API ID, API hash; session path can stay default (`~/.config/telegram-uploader/session.session`).
+3. **Settings → General** — **Target chat ID** = backup group id (`-100…`).
+4. **Save**.
+5. **Sign in to Telegram…** (in Settings) **or** run `telegram-uploader-login` in a terminal (phone + code, once).
+6. **Test Client API** — should upload a small test file to your group.
+7. **Add file → Backup** — first real backup.
+
+Config and session persist under `~/.config/telegram-uploader/`. Application files: `/opt/telegram-uploader/`.
 
 ### Upgrading (`.deb` users)
 

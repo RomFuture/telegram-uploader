@@ -117,13 +117,51 @@ jobs:
           files: dist/telegram-uploader_*.deb
           generate_release_notes: true
           body: |
-            ## Install (Ubuntu 24.04 amd64)
+            ## Requirements
+
+            - Ubuntu 24.04 **amd64**
+            - Docker + Compose plugin (installed as package dependencies)
+            - Telegram: [my.telegram.org](https://my.telegram.org) API app + private backup group
+
+            ## Clean install
 
             ```bash
+            # 1. Install package (+ dependencies)
+            sudo apt update
             sudo apt install ./telegram-uploader_${{ steps.version.outputs.version }}_amd64.deb
-            telegram-uploader-check-deps   # optional
-            telegram-uploader --setup        # first install only
-            telegram-uploader                # Settings → Save → Sign in to Telegram…
+            telegram-uploader-check-deps
+
+            # If Docker is not reachable:
+            #   sudo systemctl enable --now docker
+            #   sudo usermod -aG docker $USER
+            #   log out and back in, then re-run check-deps
+
+            # 2. Create config (once)
+            telegram-uploader --setup
+
+            # 3. Start stack + GUI
+            telegram-uploader
             ```
 
-            Upgrade: see README § Upgrading. Config lives in `~/.config/telegram-uploader/.env`.
+            **In the GUI (first time):**
+
+            1. **Settings → Client API** — API ID and API hash from [my.telegram.org](https://my.telegram.org)
+            2. **Settings → General** — Target chat ID = backup **group** id (`-100…`, not your user id)
+            3. **Save**
+            4. **Sign in to Telegram…** (or `telegram-uploader-login` in a terminal)
+            5. **Test Client API** — confirms upload to your group
+            6. **Add file → Backup**
+
+            Config: `~/.config/telegram-uploader/.env` · Session: `~/.config/telegram-uploader/session.session`
+
+            More detail: [README § Clean install](https://github.com/RomFuture/telegram-uploader#clean-install-first-time) · [TELEGRAM_SETUP.md](https://github.com/RomFuture/telegram-uploader/blob/main/docs/TELEGRAM_SETUP.md)
+
+            ## Upgrade
+
+            ```bash
+            docker compose -f /opt/telegram-uploader/docker-compose.yml down
+            sudo apt install ./telegram-uploader_${{ steps.version.outputs.version }}_amd64.deb
+            telegram-uploader
+            ```
+
+            No `--setup` or re-login unless you changed accounts. See [README § Upgrading](https://github.com/RomFuture/telegram-uploader#upgrading-deb-users).
