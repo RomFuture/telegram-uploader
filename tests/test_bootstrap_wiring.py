@@ -81,6 +81,28 @@ def test_build_storage_provider_uses_bot_by_default() -> None:
     assert isinstance(provider, TelegramProviderV1)
 
 
+def test_build_storage_provider_client_without_credentials_uses_stub() -> None:
+    cfg = AppConfig(
+        app_env="test",
+        app_log_level="INFO",
+        postgres_dsn="postgresql://test:test@localhost:5432/test",
+        redis_url="redis://localhost:6379/0",
+        telegram_provider="client",
+        telegram_bot_token="",
+        telegram_bot_api_url="http://localhost:8081",
+        telegram_api_id=None,
+        telegram_api_hash="",
+        telegram_session_path=Path("/tmp/session.session"),
+        telegram_target_chat_id="",
+        archive_encryption_key=None,
+        archive_cache_dir=Path("/tmp/telegram_uploader"),
+    )
+    from infrastructure.providers.unconfigured_storage_provider import UnconfiguredStorageProvider
+
+    provider = build_storage_provider(cfg)
+    assert isinstance(provider, UnconfiguredStorageProvider)
+
+
 def test_build_storage_provider_uses_client_when_configured() -> None:
     cfg = AppConfig(
         app_env="test",

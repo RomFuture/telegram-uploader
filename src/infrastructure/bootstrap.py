@@ -12,6 +12,7 @@ from infrastructure.config import AppConfig, load_config
 from infrastructure.db.migrate import apply_migrations
 from infrastructure.db.sqlalchemy_repositories import SqlAlchemyRepositories
 from infrastructure.providers import TelegramClientProvider, TelegramProviderV1
+from infrastructure.providers.unconfigured_storage_provider import UnconfiguredStorageProvider
 from infrastructure.worker.celery_task_queue import CeleryTaskQueue
 from use_cases.backup.cleanup_volume import CleanupVolumeUseCase
 from use_cases.backup.enqueue_source_item import EnqueueSourceItemUseCase
@@ -51,12 +52,14 @@ def _wire_repositories(cfg: AppConfig) -> Repositories:
 def build_storage_provider(cfg: AppConfig) -> StorageProviderPort:
     if cfg.telegram_provider == "client":
         if cfg.telegram_api_id is None or not cfg.telegram_api_hash:
-            raise ValueError("TELEGRAM_API_ID and TELEGRAM_API_HASH required for client provider")
+            return UnconfiguredStorageProvider(mode="client")
         return TelegramClientProvider(
             api_id=cfg.telegram_api_id,
             api_hash=cfg.telegram_api_hash,
             session_path=cfg.telegram_session_path,
         )
+    if not cfg.telegram_bot_token:
+        return UnconfiguredStorageProvider(mode="bot")
     return TelegramProviderV1(
         bot_token=cfg.telegram_bot_token,
         base_url=cfg.telegram_bot_api_url,
