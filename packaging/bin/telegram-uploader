@@ -56,6 +56,8 @@ ENV_FILE="$(resolve_env_file)" || {
 load_env_file "$ENV_FILE"
 
 export TELEGRAM_UPLOADER_ENV_FILE="$ENV_FILE"
+export INSTALL_ROOT="/opt/telegram-uploader"
+export HOST_SOURCE_MOUNT="${HOST_SOURCE_MOUNT:-$HOME}"
 cd "$INSTALL_ROOT"
 
 if ! docker compose -f "$COMPOSE_FILE" up -d --build; then

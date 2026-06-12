@@ -1,6 +1,6 @@
 Metadata-Version: 2.2
 Name: telegram-uploader
-Version: 0.1.0
+Version: 0.1.8
 Summary: Provider-agnostic messenger storage core with Telegram-first adapter.
 Requires-Python: >=3.12
 Description-Content-Type: text/markdown
@@ -34,9 +34,8 @@ You pick files in the GUI (English UI; `display_name` lands at enqueue). Workers
 | Restore download (Bot API) | Fails with HTTP 404 |
 | Restore extract (7z → original file) | Missing |
 | Telegram Client API (MTProto) | Planned ([migration](docs/TELEGRAM_CLIENT_API_MIGRATION.md)) |
-| CI: ruff, mypy, pytest | Partial ([workflow](.github/workflows/ci.yml)) |
-| CD: `.deb` package + upgrades | Planned ([packaging](docs/PROJECT.md#packaging--cd-p005--planned)) |
-| `import-linter`, observation layer | Missing |
+| CI: ruff, mypy, pytest, lint-imports | Done ([workflow](.github/workflows/ci.yml)) |
+| CD: `.deb` on tag `v*` | Done ([release](.github/workflows/release.yml)) |
 
 **Start here (maintainer):** [docs/PROJECT.md](docs/PROJECT.md) — architecture, refactor PR plan (R2–R8), gate/smoke rules.
 
@@ -75,6 +74,38 @@ Then run:
 The script checks `.env` for placeholder/missing Telegram keys **before** `docker compose up`, then starts Postgres, Redis, `telegram-bot-api`, Celery workers, restarts workers to pick up code changes, and opens the Tkinter GUI.
 
 Smoke: Start Session → Add File → Start Backup → Refresh Progress. Volumes should appear in your Telegram group as `display-name.7z.001`. See [TELEGRAM_SETUP.md § First backup](docs/TELEGRAM_SETUP.md#6-first-backup) and worker logs: `docker compose logs -f celery-worker-archive-1`.
+
+## Install from .deb (Ubuntu 24.04 amd64)
+
+Download the latest `.deb` from [GitHub Releases](https://github.com/RomFuture/telegram-uploader/releases) (built automatically on tag `v*`, version synced with `pyproject.toml`).
+
+**Prefer `apt install`** — it pulls Docker and other dependencies automatically:
+
+```bash
+sudo apt update
+sudo apt install ./telegram-uploader_0.1.0_amd64.deb
+telegram-uploader-check-deps   # optional: verify Docker daemon, Python, 7z
+telegram-uploader --setup
+telegram-uploader
+```
+
+If you used `dpkg -i` alone and dependencies are missing:
+
+```bash
+sudo apt -f install
+sudo apt install docker.io docker-compose-plugin python3-venv python3-tk p7zip-full
+telegram-uploader-check-deps
+```
+
+Avoid `sudo dpkg -i` without `apt -f install` — Docker may not be installed (common on fresh Linux).
+
+Config: `~/.config/telegram-uploader/.env` (created on first run). Application files: `/opt/telegram-uploader/`. See [PROJECT.md § Packaging](docs/PROJECT.md#packaging) for upgrade steps.
+
+Local build (requires [nfpm](https://nfpm.goreleaser.com/)):
+
+```bash
+./scripts/build_deb.sh
+```
 
 ### `telegram-bot-api` fails to start
 
@@ -171,9 +202,10 @@ Today you create the bot, API app, group, and `.env` by hand ([TELEGRAM_SETUP.md
 
 | Task | State |
 |------|-------|
-| CD pipeline: `.deb` on release tag | Open |
-| Safe upgrade order (stop workers → migrate → image → start) | Open ([spec](docs/PROJECT.md)) |
-| Version lock: deb = `pyproject.toml` = image tag = migrations | Open |
+| CD pipeline: `.deb` on release tag | Done ([`.github/workflows/release.yml`](.github/workflows/release.yml)) |
+| `packaging/` + `telegram-uploader` launcher | Done |
+| Safe upgrade order (stop workers → migrate → image → start) | Documented ([PROJECT.md](docs/PROJECT.md#packaging)) |
+| Version lock: deb = `pyproject.toml` = tag `v*` | Done (`scripts/check_release_version.sh`) |
 
 ### P0 Architecture cleanup
 

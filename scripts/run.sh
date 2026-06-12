@@ -79,6 +79,7 @@ validate_telegram_setup() {
 
 require_env_file
 load_env
+export INSTALL_ROOT="$ROOT"
 validate_telegram_setup
 
 if ! docker compose up -d --build; then

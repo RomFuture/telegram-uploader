@@ -72,6 +72,7 @@ class SevenZipService:
         outgoing_dir = work_dir / "outgoing"
         raw_dir.mkdir(parents=True, exist_ok=True)
         outgoing_dir.mkdir(parents=True, exist_ok=True)
+        self._clear_stale_volumes(raw_dir, outgoing_dir, manifest_path=work_dir / "volume_manifest.json")
 
         archive_base = raw_dir / "payload.7z"
         self._run_7z(source_path=source_path, archive_path=archive_base, encryption_key=key)
@@ -135,6 +136,49 @@ class SevenZipService:
                 f"expected one new file in {dest_dir}, found {len(new_files)}"
             )
         return new_files.pop()
+
+    def _clear_stale_volumes(
+        self,
+        raw_dir: Path,
+        outgoing_dir: Path,
+        *,
+        manifest_path: Path,
+    ) -> None:
+        """Remove partial 7z parts left by failed runs (7z cannot update split archives)."""
+        stale = sorted(raw_dir.glob("payload.7z*"))
+        # #region agent log
+        if stale:
+            import json, os, time
+
+            _payload = {
+                "sessionId": "5d237b",
+                "hypothesisId": "H1-stale-partial-7z",
+                "location": "seven_zip_service.py:_clear_stale_volumes",
+                "message": "removing stale partial 7z volumes before archive",
+                "data": {"count": len(stale), "paths": [str(p) for p in stale]},
+                "timestamp": int(time.time() * 1000),
+                "runId": "post-fix",
+            }
+            for _log_path in (
+                os.environ.get("DEBUG_LOG_PATH", ""),
+                "/data/archive-cache/debug-5d237b.log",
+                "/home/romfuture/Projects/Personal/telegram-uploader/.cursor/debug-5d237b.log",
+            ):
+                if not _log_path:
+                    continue
+                try:
+                    with open(_log_path, "a", encoding="utf-8") as _log:
+                        _log.write(json.dumps(_payload) + "\n")
+                    break
+                except OSError:
+                    continue
+        # #endregion
+        for path in stale:
+            path.unlink(missing_ok=True)
+        for path in outgoing_dir.iterdir():
+            if path.is_file():
+                path.unlink(missing_ok=True)
+        manifest_path.unlink(missing_ok=True)
 
     def _run_7z(self, source_path: Path, archive_path: Path, encryption_key: str) -> None:
         command = [
