@@ -80,7 +80,15 @@ def build_client_provider(
 
 
 def _client_api_test_file() -> Path:
-    return Path(__file__).resolve().parents[2] / "docs/refactor/README.md"
+    install_root = Path(__file__).resolve().parents[2]
+    candidates = (
+        install_root / "share/client_api_test.md",
+        install_root / "docs/refactor/README.md",
+    )
+    for path in candidates:
+        if path.is_file():
+            return path
+    return candidates[0]
 
 
 def build_backup_api(cfg: AppConfig) -> BackupApi:

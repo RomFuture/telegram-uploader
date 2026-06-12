@@ -239,6 +239,17 @@ KeePassXC-style layout + theme fix — **первая итерация** (2026-0
 
 ---
 
+## P1.3 — Packaged install (.deb)
+
+### Запланировано (следующий релиз после 0.1.3)
+
+- [x] **Test Client API — test file в .deb** — bundled `share/client_api_test.md` в пакете; `_client_api_test_file()` ищет `share/` затем `docs/refactor/README.md`.
+- [ ] **Settings → сохранение в `~/.config/telegram-uploader/.env`** — сейчас credentials только в памяти GUI; workers читают `.env` через compose. Save в Settings должен писать файл и подсказывать `docker compose restart` workers.
+
+**Gate:** `.deb` install → Settings → Test Client API → OK (или понятная ошибка auth, не missing file); Save → backup smoke.
+
+---
+
 ## P2 — Observation / CI
 
 - [ ] **AI agent skills** — [AI_AGENT_SKILLS.md](AI_AGENT_SKILLS.md): `.cursor/skills/` (onion-layers, gate-and-smoke); wire stop-slop for prose; clone `--recurse-submodules`

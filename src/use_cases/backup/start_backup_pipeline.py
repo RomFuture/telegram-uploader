@@ -43,6 +43,18 @@ class StartBackupPipelineUseCase:
             enqueued += 1
 
         enqueued += self._resume_pending_uploads(session_id)
+        enqueued += self._resume_stuck_archiving(session_id)
+        return enqueued
+
+    def _resume_stuck_archiving(self, session_id: UUID) -> int:
+        enqueued = 0
+        for item in self.repos.source_items.list_domain_by_session(session_id):
+            if item.status != domain.SourceItemStatus.ARCHIVING:
+                continue
+            if self.repos.archive_volumes.list_domain_by_source_item(item.id):
+                continue
+            self.task_queue.enqueue_archive(item.id)
+            enqueued += 1
         return enqueued
 
     def _resume_pending_uploads(self, session_id: UUID) -> int:

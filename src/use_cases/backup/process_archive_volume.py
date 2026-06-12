@@ -3,7 +3,7 @@ from pathlib import Path
 from uuid import UUID
 
 import domain as domain
-from use_cases.backup.gates import require_item_queued
+from use_cases.backup.gates import require_item_archivable
 from use_cases.backup.idempotency import (
     ArchiveStepAction,
     UploadStepAction,
@@ -37,10 +37,16 @@ class ProcessArchiveVolumeUseCase:
         if action == ArchiveStepAction.FAIL:
             return
         if action == ArchiveStepAction.RESUME:
-            self._resume_uploads(item)
-            return
+            volumes = self.archive_volumes.list_domain_by_source_item(item.id)
+            if volumes:
+                self._resume_uploads(item)
+                return
+            action = ArchiveStepAction.RUN
 
-        require_item_queued(item)
+        require_item_archivable(
+            item,
+            has_volumes=bool(self.archive_volumes.list_domain_by_source_item(item.id)),
+        )
         session = self.sessions.require(item.session_id)
 
         archiving = domain.mark_source_item(item, status=domain.SourceItemStatus.ARCHIVING)

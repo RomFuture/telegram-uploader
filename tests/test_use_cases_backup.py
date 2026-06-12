@@ -552,7 +552,7 @@ def test_report_cleanup_failure_marks_cleanup_item_failed(
     assert stored.status == domain.SourceItemStatus.FAILED.value
 
 
-def test_process_archive_raises_on_invalid_status(
+def test_process_archive_retries_orphaned_archiving_without_volumes(
     repos: InMemoryRepositories,
     task_queue: FakeTaskQueue,
     tmp_path: Path,
@@ -572,15 +572,41 @@ def test_process_archive_raises_on_invalid_status(
         replace(item_record, status=domain.SourceItemStatus.ARCHIVING.value),
     )
 
+    ProcessArchiveVolumeUseCase(
+        sessions=repos.sessions,
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        archive_service=FakeArchiveService(
+            volumes=[ArchiveVolumePart(1, tmp_path / "part.7z.001", "part.7z.001")],
+        ),
+        task_queue=task_queue,
+        archive_cache_dir=tmp_path / "cache",
+    ).execute(item.id)
+
+    stored = repos.source_items.get(item.id)
+    assert stored is not None
+    assert stored.status == domain.SourceItemStatus.UPLOADING.value
+    assert task_queue.upload_ids
+
+
+def test_require_item_archivable_rejects_non_queued_without_orphan(
+    repos: InMemoryRepositories,
+    tmp_path: Path,
+) -> None:
+    from use_cases.backup.gates import require_item_archivable
+
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
+    source_file = tmp_path / "payload.bin"
+    source_file.write_bytes(b"payload")
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
+        session.id,
+        source_file,
+        "Payload",
+    )
+    uploading = domain.mark_source_item(item, status=domain.SourceItemStatus.UPLOADING)
+
     with pytest.raises(domain.DomainError):
-        ProcessArchiveVolumeUseCase(
-            sessions=repos.sessions,
-            source_items=repos.source_items,
-            archive_volumes=repos.archive_volumes,
-            archive_service=FakeArchiveService(),
-            task_queue=task_queue,
-            archive_cache_dir=tmp_path / "cache",
-        ).execute(item.id)
+        require_item_archivable(uploading, has_volumes=False)
 
 
 def test_process_archive_preserves_folder_id_on_status_update(
