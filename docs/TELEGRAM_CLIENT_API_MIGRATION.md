@@ -2,7 +2,7 @@
 
 Гайд по замене `TelegramProviderV1` (HTTP Bot API + local `telegram-bot-api`) на **user-session Client API** (MTProto) для надёжного upload/download из целевой группы.
 
-**Статус:** ⏳ запланировано — backup через Bot API работает; **restore падает с HTTP 404** на download.
+**Статус:** 🟡 **частично выполнено (2026-06-12)** — Client API default для backup/upload; GUI sign-in + Test Client API; restore download — smoke TBD. Bot API — legacy (`TELEGRAM_PROVIDER=bot`).
 
 **Связанные документы:**
 
@@ -19,7 +19,7 @@
 
 ## Зачем менять
 
-| Bot API (сейчас) | Client API (цель) |
+| Bot API (legacy) | Client API (default с 0.1.6+) |
 |------------------|-------------------|
 | `sendDocument` + `getFile` + `GET /file/bot{token}/{path}` | `send_file` + `download_media` по сообщению в чате |
 | `file_id` может протухать | restore по `chat_id` + `message_id` — стабильнее для группы |
@@ -30,12 +30,26 @@
 
 ---
 
-## Текущая реализация (Bot API)
+## Текущая реализация
+
+**Default (Client API):**
+
+```
+infrastructure/providers/telegram_client_provider.py  → TelegramClientProvider
+infrastructure/bootstrap.py                           → TELEGRAM_PROVIDER=client (default)
+application/telegram_sign_in.py                       → GUI + CLI sign-in
+~/.config/telegram-uploader/session.session             → host session (volume-mounted to workers)
+```
+
+**Legacy (Bot API):**
 
 ```
 infrastructure/providers/telegram_provider.py   → TelegramProviderV1
-use_cases/ports/storage_provider.py           → StorageProviderPort (Protocol)
-docker-compose.yml                            → telegram-bot-api :8081
+docker-compose.yml --profile bot                  → telegram-bot-api :8081
+```
+
+```
+use_cases/shared/ports/storage_provider.py      → StorageProviderPort (Protocol)
 ```
 
 ### Upload flow
@@ -298,4 +312,4 @@ Client API решает **download**. Отдельно (см. [BACKLOG.md](BACKL
 
 ---
 
-*Обновляй этот файл по мере прохождения фаз. После завершения миграции — пометить Bot API как deprecated в ONION_ARCHITECTURE.md.*
+*Обновляй этот файл по мере прохождения фаз. Bot API помечен legacy в [PROJECT.md](PROJECT.md) и [README](../README.md).*

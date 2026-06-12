@@ -6,23 +6,25 @@ Docs: [PROJECT.md](docs/PROJECT.md) (architecture + refactor plan) · [BACKLOG.m
 
 ## Backup flow
 
-You pick files in the GUI (English UI; `display_name` lands at enqueue). Workers encrypt and split archives with 7z, upload volumes to a Telegram group, and record state in PostgreSQL. Celery runs archive, upload, cleanup, and restore queues. The GUI calls `BackupFacade` only. Restore should download volumes and extract the original file; that path is unfinished.
+You pick files in the GUI (English UI; `display_name` lands at enqueue). Workers encrypt and split archives with 7z, upload volumes to a Telegram group via **Client API (MTProto)**, and record state in PostgreSQL. Celery runs archive, upload, cleanup, and restore queues. The GUI calls `BackupApi` through `BackendReceiver`. Restore download on Client API is still being validated end-to-end.
 
 ## Status (June 2026)
 
 | Area | State |
 |------|-------|
 | Onion layers: `domain` → `use_cases` → `infrastructure` → `application` | Done |
-| Backup: GUI → workers → Telegram → `completed` | Done |
-| Restore download (Bot API) | Fails with HTTP 404 |
-| Restore extract (7z → original file) | Missing |
-| Telegram Client API (MTProto) | Planned ([migration](docs/TELEGRAM_CLIENT_API_MIGRATION.md)) |
+| Phase 1 refactor (R2–R8, public API) | Done |
+| Backup: GUI → workers → Telegram → `completed` | Done (Client API default) |
+| Client API: sign-in, Test Client API, upload | Done |
+| Restore download (Client API) | In progress ([migration](docs/TELEGRAM_CLIENT_API_MIGRATION.md)) |
+| Restore extract (7z → original file) | Done |
+| Packaging `.deb` + upgrade docs | Done (0.1.9) |
 | CI: ruff, mypy, pytest, lint-imports | Done ([workflow](.github/workflows/ci.yml)) |
 | CD: `.deb` on tag `v*` | Done ([release](.github/workflows/release.yml)) |
 
-**Start here (maintainer):** [docs/PROJECT.md](docs/PROJECT.md) — architecture, refactor PR plan (R2–R8), gate/smoke rules.
+**Start here (maintainer):** [docs/PROJECT.md](docs/PROJECT.md) — architecture, gate/smoke rules.
 
-Active work: **Phase 1 refactor** (narrow API, drop facade hop). Open features → [BACKLOG.md](docs/BACKLOG.md).
+Open features → [BACKLOG.md](docs/BACKLOG.md).
 
 ## Setup from scratch
 
@@ -40,13 +42,13 @@ python3 -m venv .venv
 cp .env.example .env
 ```
 
-**Telegram (v1, Bot API):** backup still runs through a **bot** and a local **`telegram-bot-api`** container. Fill `.env` using **[docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)** before first run.
+**Telegram (default: Client API):** backup uses your **Telegram user session** (Telethon). Fill `.env` using **[docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)** before first run.
 
 | Variable | Source |
 |----------|--------|
-| `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | [my.telegram.org](https://my.telegram.org) — powers `telegram-bot-api` in Docker |
-| `TELEGRAM_BOT_TOKEN` | [@BotFather](https://t.me/BotFather) |
-| `TELEGRAM_TARGET_CHAT_ID` | Numeric id of your private backup group |
+| `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | [my.telegram.org](https://my.telegram.org) |
+| `TELEGRAM_TARGET_CHAT_ID` | Numeric id of your private backup group (`-100…`) |
+| `TELEGRAM_SESSION_PATH` | Default `~/.config/telegram-uploader/session.session` |
 
 Then run:
 
@@ -54,7 +56,7 @@ Then run:
 ./scripts/run.sh
 ```
 
-The script checks `.env` for placeholder/missing Telegram keys **before** `docker compose up`, then starts Postgres, Redis, `telegram-bot-api`, Celery workers, restarts workers to pick up code changes, and opens the Tkinter GUI.
+The script starts Postgres, Redis, Celery workers, applies migrations, and opens the Tkinter GUI. Sign in via **Settings → Sign in to Telegram…** or `telegram-uploader-login` (packaged install).
 
 Smoke: Start Session → Add File → Start Backup → Refresh Progress. Volumes should appear in your Telegram group as `display-name.7z.001`. See [TELEGRAM_SETUP.md § First backup](docs/TELEGRAM_SETUP.md#6-first-backup) and worker logs: `docker compose logs -f celery-worker-archive-1`.
 
@@ -196,29 +198,29 @@ docker compose logs telegram-bot-api
 
 Fix: set real `api_id` (numeric) and `api_hash` from [my.telegram.org](https://my.telegram.org), plus bot token and group id — see [TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md). `./scripts/run.sh` should catch this early and point to the same guide.
 
-### Telegram provider: Bot API now, Client API next
+### Telegram provider: Client API default, Bot API legacy
 
-v1 backup uses **Bot API** (`TelegramProviderV1` + `telegram-bot-api`). **Restore download is unreliable** on this stack (HTTP 404). The planned replacement is **Client API (MTProto)** with a user session — different auth (phone login, session file), no `telegram-bot-api` container, stable upload/download from the target group.
+**Default:** `TELEGRAM_PROVIDER=client` — `TelegramClientProvider` (Telethon user session). Sign in once via GUI or `telegram-uploader-login`. No `telegram-bot-api` container required.
 
-We are **not investing further in Bot API onboarding polish** (wizard, extra setup automation) until that migration lands. For now, manual [TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) is enough to run backup; active plan: **[TELEGRAM_CLIENT_API_MIGRATION.md](docs/TELEGRAM_CLIENT_API_MIGRATION.md)**.
+**Legacy:** `TELEGRAM_PROVIDER=bot` + `docker compose --profile bot` — old Bot API path; restore download unreliable (HTTP 404). See [TELEGRAM_CLIENT_API_MIGRATION.md](docs/TELEGRAM_CLIENT_API_MIGRATION.md).
 
 ## Architecture
 
 ```mermaid
 flowchart TB
   ui[LinuxGUI] --> backend[AppBackendReceiver]
-  backend --> facade[BackupFacade]
-  facade --> useCases[UseCases]
+  backend --> api[BackupApi]
+  api --> useCases[UseCases]
   useCases --> queue[CeleryQueue]
   useCases --> db[(PostgreSQL)]
   queue --> worker[CeleryWorker]
+  worker --> workerApi[WorkerApi]
+  workerApi --> useCases
   worker --> redis[(Redis)]
-  worker --> db
   worker --> archive[SevenZipService]
   worker --> providerPort[StorageProviderPort]
-  providerPort --> tgProvider[TelegramProviderV1]
-  tgProvider --> tgApi[TelegramBotAPI]
-  tgApi --> messenger[TelegramGroup]
+  providerPort --> tgClient[TelegramClientProvider]
+  tgClient --> messenger[TelegramGroup]
 ```
 
 Layers: `application` → `infrastructure` → `use_cases` → `domain`. The GUI must not import infrastructure.
@@ -229,9 +231,9 @@ Layers: `application` → `infrastructure` → `use_cases` → `domain`. The GUI
 |------|------|
 | `src/domain/` | Entities, statuses, invariants |
 | `src/use_cases/` | Use cases, `StorageProviderPort` |
-| `src/infrastructure/` | DB, 7z, Celery, Telegram provider, facade, bootstrap |
+| `src/infrastructure/` | DB, 7z, Celery, Telegram providers, bootstrap |
 | `src/application/` | `backend_receiver`, Tkinter GUI |
-| Docker | Postgres, Redis, workers, `telegram-bot-api` |
+| Docker | Postgres, Redis, workers (`telegram-bot-api` optional, `--profile bot`) |
 
 ## Checks
 
@@ -248,33 +250,33 @@ docker compose logs -f celery-worker-archive-1
 | [docs/PROJECT.md](docs/PROJECT.md) | **Architecture, refactor plan, gate/smoke, stack** |
 | [docs/BACKLOG.md](docs/BACKLOG.md) | Open work |
 | [docs/INTERNAL_SPEC.md](docs/INTERNAL_SPEC.md) | Encryption, `display_name`, UI language |
-| [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | Bot, API keys, group, `.env`, first backup |
+| [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | API keys, group, `.env`, first backup |
+| [docs/CLIENT_API_SETUP.md](docs/CLIENT_API_SETUP.md) | Client API sign-in and session |
+| [docs/releases/](docs/releases/) | GitHub Release notes per version |
 | [docs/TELEGRAM_CLIENT_API_MIGRATION.md](docs/TELEGRAM_CLIENT_API_MIGRATION.md) | Bot API → Client API |
 
 ---
 
 ## Roadmap
 
-### Onboarding automation (deferred until Client API)
-
-Today you create the bot, API app, group, and `.env` by hand ([TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)). `./scripts/run.sh` validates required keys before compose. **Bot API–specific wizard work is on hold** — credentials and auth will change with Client API (phone + session instead of bot token + local Bot API server).
+### Onboarding automation
 
 | Task | State |
 |------|-------|
-| `.env` preflight in `scripts/run.sh` | Done |
-| GUI wizard for Bot API (my.telegram.org, BotFather, group id) | **Deferred** — superseded by Client API plan |
-| Client API: phone login + session file | Open ([migration](docs/TELEGRAM_CLIENT_API_MIGRATION.md)) |
-| Write `.env` / app config from wizard; provider healthcheck | Open (after Client API) |
+| Settings → Save → `~/.config/telegram-uploader/.env` | Done |
+| GUI / CLI sign-in (`telegram-uploader-login`) | Done |
+| Test Client API in Settings | Done |
+| Beginner-friendly setup guide (screenshots, no terminal) | Open ([BACKLOG](docs/BACKLOG.md)) |
 
 ### P-demo
 
 | Task | State |
 |------|-------|
 | `scripts/run.sh`: Docker + GUI | Done |
-| `.github/workflows/ci.yml` | Partial |
+| `.github/workflows/ci.yml` | Done |
 | README + [TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | Done |
-| Backup happy path | Done |
-| Client API / restore for demo | Open |
+| Backup happy path (Client API) | Done |
+| Restore smoke on Client API | Open |
 
 ### P0.05 Packaging & CD
 
@@ -282,6 +284,7 @@ Today you create the bot, API app, group, and `.env` by hand ([TELEGRAM_SETUP.md
 |------|-------|
 | CD pipeline: `.deb` on release tag | Done ([`.github/workflows/release.yml`](.github/workflows/release.yml)) |
 | `packaging/` + `telegram-uploader` launcher | Done |
+| Clean install + upgrade docs | Done ([README](#clean-install-first-time), [releases](docs/releases/)) |
 | Safe upgrade order (stop workers → migrate → image → start) | Documented ([PROJECT.md](docs/PROJECT.md#packaging)) |
 | Version lock: deb = `pyproject.toml` = tag `v*` | Done (`scripts/check_release_version.sh`) |
 
@@ -292,25 +295,25 @@ Work order: `use_cases` → `infrastructure` → `application`.
 | Stage | Work | State |
 |-------|------|-------|
 | P0.1 | Ports/records audit, restore refs for Client API, failed-status in use cases, dedupe backup/restore | Open |
-| P0.2 | Bootstrap/facade, Client API provider, structured logging, rollback on failure | Open |
-| P0.3 | Thin `backend_receiver`, GUI errors, failed/stuck UI, settings, restore UX | Open |
+| P0.2 | Client API provider, structured logging, rollback on failure | Partial (provider done) |
+| P0.3 | Thin `backend_receiver`, GUI errors, failed/stuck UI, settings, restore UX | Partial (settings + sign-in done) |
 
 ### P1 Restore end-to-end
 
 | Task | State |
 |------|-------|
-| Download volumes by `part_number` | Open |
-| 7z decrypt/extract with session key | Open |
-| Write to user `dest_path` (fix staging bug) | Open |
-| Restore success / `failed` statuses | Open |
+| Download volumes by `part_number` (Client API) | Open |
+| 7z decrypt/extract with session key | Done |
+| Write to user `dest_path` | Done |
+| Restore success / `failed` statuses | Partial |
 | Resume downloads | Open (low priority) |
 
 ### P2 Observation & CI
 
 | Task | State |
 |------|-------|
-| `import-linter` layer contracts | Open |
-| CI `lint-imports` step | Open |
+| `import-linter` layer contracts | Done |
+| CI `lint-imports` step | Done |
 | `src/observation/health.py` | Open |
 | `logs/` in `.gitignore` | Open |
 
@@ -335,7 +338,7 @@ Work order: `use_cases` → `infrastructure` → `application`.
 
 | Task | State |
 |------|-------|
-| [PROJECT.md](docs/PROJECT.md): sync with code after R5–R8 | Open |
+| [PROJECT.md](docs/PROJECT.md): sync with code | Done (2026-06-12) |
 
 ### After v1
 

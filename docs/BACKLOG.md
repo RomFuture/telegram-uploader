@@ -74,7 +74,8 @@ docker compose logs -f celery-worker-archive-1
 - [x] **README** + **[TELEGRAM_SETUP.md](TELEGRAM_SETUP.md)** — setup from scratch (bot, API keys, group, `./scripts/run.sh`, smoke backup)
 - [ ] **Onboarding automation** — GUI wizard: API id/hash, bot, group id, `.env`; позже Client API login ([README](../README.md#onboarding-automation-planned))
 - [ ] **Client API setup guide (beginner-friendly)** — переписать [CLIENT_API_SETUP.md](CLIENT_API_SETUP.md) «нативно»: без CLI-жаргона, пошагово «куда нажать / что скопировать», скриншоты my.telegram.org и Telegram, что такое session file простыми словами, отдельный блок «если ничего не понятно»; целевая аудитория — пользователь без опыта в терминале. **Gate:** человек без dev-навыков проходит auth + первый backup по одному документу (Roman проверяет на «чистом» знакомом).
-- [ ] Backup happy path работает *(уже есть)* · Client API / restore — по возможности, не блокер demo если backup стабилен
+- [x] Backup happy path (Client API default)
+- [ ] Restore smoke на Client API
 
 **Gate P-demo:** друг (или ты на чистой машине) повторяет **одну команду** после clone; CI на `main` зелёный; smoke backup пройден.
 
@@ -129,7 +130,7 @@ docker compose logs -f celery-worker-archive-1
 
 ### Есть в проекте, но нет в CV — освоить здесь
 
-- [ ] **Onion / clean architecture** — порты (`Protocol`), facade, bootstrap wiring (главная цель P0)
+- [x] **Onion / clean architecture** — порты (`Protocol`), public API, bootstrap wiring (P0, закрыт 2026-06)
 - [ ] **Tkinter** — `application/gui/`; доработка UX (P0.3)
 - [ ] **7z / p7zip** — `seven_zip_service.py`, encrypt + split volumes
 - [ ] **Telegram Bot API** — legacy `TelegramProviderV1`; понять перед заменой на Client API
@@ -151,7 +152,7 @@ docker compose logs -f celery-worker-archive-1
 
 - [ ] Пройти **use_cases + SQLAlchemy** вместе (P0.1)
 - [ ] Пройти **Celery + Redis + asyncio/Telethon** вместе (P0.2)
-- [ ] Пройти **Tkinter + facade** вместе (P0.3)
+- [ ] Пройти **Tkinter + BackupApi** вместе (P0.3)
 - [ ] Настроить **CI** (ruff, mypy, pytest) — P2
 - [ ] (Опционально) spike **Prometheus metrics** на worker task duration
 
@@ -239,15 +240,11 @@ KeePassXC-style layout + theme fix — **первая итерация** (2026-0
 
 ---
 
-## P1.3 — Packaged install (.deb)
+## ~~P1.3 — Packaged install (.deb)~~ ✅ закрыт (0.1.9)
 
-### Запланировано (следующий релиз после 0.1.3)
+**Итог:** `.deb` на GitHub Releases; clean install + upgrade в README; release notes в `docs/releases/v0.1.9.md`; sign-in, Test Client API, archive worker fixes (`INSTALL_ROOT` mount, stale 7z cleanup).
 
-- [x] **Test Client API — test file в .deb** — bundled `share/client_api_test.md` в пакете; `_client_api_test_file()` ищет `share/` затем `docs/refactor/README.md`.
-- [x] **Проверка зависимостей при установке** — `check-deps.sh`, `telegram-uploader-check-deps`, postinst + launcher; README: `apt install ./deb` не `dpkg -i` alone.
-- [x] **Settings → `.env` + Telegram sign-in** — Save → `~/.config/telegram-uploader/.env`; Sign in to Telegram… / `telegram-uploader-login` с privacy intro (0.1.6).
-
-**Gate:** `.deb` install → Settings → Test Client API → OK (или понятная ошибка auth, не missing file); Save → backup smoke.
+**Gate закрыт:** `.deb` install → Settings → Test Client API → backup smoke.
 
 ---
 
@@ -283,9 +280,9 @@ KeePassXC-style layout + theme fix — **первая итерация** (2026-0
 
 ---
 
-## P5 — Docs sync
+## ~~P5 — Docs sync~~ ✅ закрыт (2026-06-12)
 
-- [x] [PROJECT.md](PROJECT.md) — синхрон с кодом после R2–R8 (R8)
+**Итог:** [PROJECT.md](PROJECT.md), README, Telegram guides, `docs/releases/`; удалены устаревшие redirect-файлы и `docs/refactor/`.
 
 ---
 

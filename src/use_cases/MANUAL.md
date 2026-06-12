@@ -1,7 +1,7 @@
 # use_cases — мануал слоя
 
 > Краткий путеводитель по orchestration-слою telegram-uploader.  
-> Канон архитектуры: [docs/PROJECT.md](../../docs/PROJECT.md). Детали рефакторинга: [docs/refactor/](../../docs/refactor/).
+> Канон архитектуры: [docs/PROJECT.md](../../docs/PROJECT.md).
 
 ---
 
@@ -356,7 +356,7 @@ BackupApi.restore_session → RestoreSessionUseCase
 
 | Тема | Документ |
 |------|----------|
-| PR-детали рефакторинга | [docs/refactor/README.md](../../docs/refactor/README.md) |
+| Архитектура и gate/smoke | [docs/PROJECT.md](../../docs/PROJECT.md) |
 | Продуктовые правила | [docs/INTERNAL_SPEC.md](../../docs/INTERNAL_SPEC.md) |
 | Client API refs | [docs/TELEGRAM_CLIENT_API_MIGRATION.md](../../docs/TELEGRAM_CLIENT_API_MIGRATION.md) |
 | Unit-тесты UC | `tests/test_use_cases_*.py`, `tests/test_public_api.py` |

@@ -71,7 +71,8 @@ def _backup_api(
             target_chat_id="-1001",
         ),
         test_client_api_uc=TestClientApiUseCase(
-            test_file_path=Path(__file__).resolve().parents[1] / "docs/refactor/README.md",
+            test_file_path=Path(__file__).resolve().parents[1]
+            / "src/infrastructure/data/client_api_test.md",
         ),
         rename_source_item_uc=RenameSourceItemUseCase(repos.source_items),
         move_source_item_uc=MoveSourceItemUseCase(repos.source_items, repos.folders),

@@ -18,7 +18,7 @@ How to build **BackupVault** as a separate service that protects the **restore c
 |----------|------|
 | [PROJECT.md](PROJECT.md) | What telegram-uploader is, stack, upgrade order |
 | [INTERNAL_SPEC.md](INTERNAL_SPEC.md) | Restore metadata fields that drills must validate |
-| [ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md) | Gate + smoke rules (mandatory) |
+| [PROJECT.md](PROJECT.md) §10 | Gate + smoke rules (mandatory) |
 | [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) | Bot, group, `.env` for E2E drills |
 
 ---
@@ -457,7 +457,7 @@ all:
 | **P3** | E2E drill (Telegram download) | drill detects real 404 or success |
 | **P4** | Ops hardening | Grafana dashboard + friend runbook tested |
 
-**Do not start P(n+1) until P(n) gate is closed** ([ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md)).
+**Do not start P(n+1) until P(n) gate is closed** ([PROJECT.md](PROJECT.md) §10).
 
 ---
 
@@ -1279,7 +1279,7 @@ Track in `backupvault/docs/BACKLOG.md`:
 
 ## 14) Session checklist (every work session)
 
-Same cycle as [ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md):
+Same cycle as [PROJECT.md](PROJECT.md) §10:
 
 1. One phase or sub-phase only
 2. `pytest` + `ruff` + `mypy` green in **backupvault**
@@ -1399,4 +1399,4 @@ Print and tick per phase.
 
 ---
 
-*Architecture of telegram-uploader → [ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md). Product rules for restore metadata → [INTERNAL_SPEC.md](INTERNAL_SPEC.md).*
+*Architecture of telegram-uploader → [PROJECT.md](PROJECT.md). Product rules for restore metadata → [INTERNAL_SPEC.md](INTERNAL_SPEC.md).*

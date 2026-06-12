@@ -34,7 +34,7 @@ cp .env.example .env
 TELEGRAM_PROVIDER=client
 TELEGRAM_API_ID=12345678
 TELEGRAM_API_HASH=your_api_hash_here
-TELEGRAM_SESSION_PATH=/tmp/telegram_uploader/session.session
+TELEGRAM_SESSION_PATH=~/.config/telegram-uploader/session.session
 ```
 
 ---
@@ -70,14 +70,24 @@ TELEGRAM_TARGET_CHAT_ID=-1001234567890
 
 **Подробная инструкция:** [CLIENT_API_SETUP.md](CLIENT_API_SETUP.md)
 
-Run the spike script on the **host** (interactive phone login). No test file needed:
+### Packaged install (`.deb`)
+
+1. `telegram-uploader --setup` → `~/.config/telegram-uploader/.env`
+2. `telegram-uploader` → **Settings → Client API** (API ID/hash) → **General** (Target chat ID) → **Save**
+3. **Sign in to Telegram…** in Settings **or** `telegram-uploader-login` in a terminal
+4. **Test Client API** in Settings
+
+See [README § Clean install](../README.md#clean-install-first-time).
+
+### Dev install (from git)
 
 ```bash
-mkdir -p /tmp/telegram_uploader
-PYTHONPATH=src .venv/bin/python scripts/telegram_client_spike.py --login-only
+./scripts/run.sh
+# Settings → Save → Sign in to Telegram…
+# or: PYTHONPATH=src .venv/bin/python -m application.telegram_login_cli
 ```
 
-Success: `Login OK — session saved to ...`. Full steps: [CLIENT_API_SETUP.md](CLIENT_API_SETUP.md).
+Session file default: `~/.config/telegram-uploader/session.session` (mounted into workers via `docker-compose.yml`).
 
 ---
 
@@ -164,7 +174,7 @@ docker compose logs -f celery-worker-upload
 | Symptom | Check |
 |---------|--------|
 | Restore unavailable / legacy volumes | Old Bot API backups; set `TELEGRAM_PROVIDER=client` and re-backup |
-| Client API not ready | Run `scripts/telegram_client_spike.py`; check `TELEGRAM_SESSION_PATH` |
+| Client API not ready | Sign in via Settings or `telegram-uploader-login`; check `TELEGRAM_SESSION_PATH` |
 | Upload fails in Docker | Session volume mounted; same chat id in `.env` |
 | File not found in worker | Source path must be under `HOST_SOURCE_MOUNT` (default `$HOME`) |
 | `telegram-bot-api` fails | Only needed for `--profile bot`; Client API default skips it |
@@ -176,7 +186,8 @@ docker compose logs -f celery-worker-upload
 
 | Doc | Topic |
 |-----|--------|
-| [CLIENT_API_SETUP.md](CLIENT_API_SETUP.md) | Пошаговое подключение Client API (phone login, spike, Docker) |
+| [CLIENT_API_SETUP.md](CLIENT_API_SETUP.md) | Пошаговое подключение Client API (sign-in, session, Docker) |
+| [releases/v0.1.9.md](releases/v0.1.9.md) | Текст GitHub Release для `.deb` |
 | [PROJECT.md](PROJECT.md) | Run, verify, packaging |
 | [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md) | Bot API → MTProto user session |
 | [INTERNAL_SPEC.md](INTERNAL_SPEC.md) | Encryption, `display_name`, no topics |

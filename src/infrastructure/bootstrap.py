@@ -90,7 +90,6 @@ def _client_api_test_file() -> Path:
         candidates = (
             *candidates,
             repo_root / "packaging/assets/client_api_test.md",
-            repo_root / "docs/refactor/README.md",
         )
     for path in candidates:
         if path.is_file():
