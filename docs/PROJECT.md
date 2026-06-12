@@ -412,10 +412,14 @@ CD: push tag `v*` (version must match `pyproject.toml`) → [`.github/workflows/
 
 **Upgrade:**
 
-1. Stop stack: `docker compose -f /opt/telegram-uploader/docker-compose.yml down` (or `telegram-uploader` prerm on `apt remove`).
-2. Backup Postgres volume if needed (`docker volume ls` → `postgres-data`).
-3. `sudo dpkg -i telegram-uploader_<version>_amd64.deb` — postinst recreates venv and reinstalls Python deps.
-4. `telegram-uploader` — migrations run on startup, workers rebuild from packaged `Dockerfile`.
+See [README § Upgrading](../README.md#upgrading-deb-users).
+
+Maintainer release flow: bump `pyproject.toml` → commit → `git tag vX.Y.Z` → `git push origin main && git push origin vX.Y.Z` → CI builds and publishes `.deb`.
+
+1. Stop stack: `docker compose -f /opt/telegram-uploader/docker-compose.yml down`
+2. Backup Postgres volume if release notes require it (`docker volume ls` → `postgres-data`)
+3. `sudo apt install ./telegram-uploader_<version>_amd64.deb` — postinst recreates venv and reinstalls Python deps
+4. `telegram-uploader` — migrations on startup, workers rebuild from packaged `Dockerfile`
 
 Version = `pyproject.toml` = git tag without `v` prefix.
 

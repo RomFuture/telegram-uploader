@@ -145,35 +145,7 @@ class SevenZipService:
         manifest_path: Path,
     ) -> None:
         """Remove partial 7z parts left by failed runs (7z cannot update split archives)."""
-        stale = sorted(raw_dir.glob("payload.7z*"))
-        # #region agent log
-        if stale:
-            import json, os, time
-
-            _payload = {
-                "sessionId": "5d237b",
-                "hypothesisId": "H1-stale-partial-7z",
-                "location": "seven_zip_service.py:_clear_stale_volumes",
-                "message": "removing stale partial 7z volumes before archive",
-                "data": {"count": len(stale), "paths": [str(p) for p in stale]},
-                "timestamp": int(time.time() * 1000),
-                "runId": "post-fix",
-            }
-            for _log_path in (
-                os.environ.get("DEBUG_LOG_PATH", ""),
-                "/data/archive-cache/debug-5d237b.log",
-                "/home/romfuture/Projects/Personal/telegram-uploader/.cursor/debug-5d237b.log",
-            ):
-                if not _log_path:
-                    continue
-                try:
-                    with open(_log_path, "a", encoding="utf-8") as _log:
-                        _log.write(json.dumps(_payload) + "\n")
-                    break
-                except OSError:
-                    continue
-        # #endregion
-        for path in stale:
+        for path in raw_dir.glob("payload.7z*"):
             path.unlink(missing_ok=True)
         for path in outgoing_dir.iterdir():
             if path.is_file():

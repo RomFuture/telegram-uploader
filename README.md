@@ -66,7 +66,7 @@ Download the latest `.deb` from [GitHub Releases](https://github.com/RomFuture/t
 
 ```bash
 sudo apt update
-sudo apt install ./telegram-uploader_0.1.0_amd64.deb
+sudo apt install ./telegram-uploader_<version>_amd64.deb
 telegram-uploader-check-deps   # optional: verify Docker daemon, Python, 7z
 telegram-uploader --setup
 telegram-uploader
@@ -82,7 +82,51 @@ telegram-uploader-check-deps
 
 Avoid `sudo dpkg -i` without `apt -f install` — Docker may not be installed (common on fresh Linux).
 
-Config: `~/.config/telegram-uploader/.env` (created on first run). Application files: `/opt/telegram-uploader/`. See [PROJECT.md § Packaging](docs/PROJECT.md#packaging) for upgrade steps.
+Config: `~/.config/telegram-uploader/.env` (created on first run via `telegram-uploader --setup`). Application files: `/opt/telegram-uploader/`.
+
+### Upgrading (`.deb` users)
+
+Releases are published on [GitHub Releases](https://github.com/RomFuture/telegram-uploader/releases) when a maintainer pushes tag `v*` (version matches `pyproject.toml`).
+
+**What is preserved:** `~/.config/telegram-uploader/.env`, Telegram session (`session.session`), Docker volumes `postgres-data` (backup metadata) and `archive-cache` (7z cache).
+
+**What is updated:** `/opt/telegram-uploader/` (code, `docker-compose.yml`, Dockerfile), `/usr/bin/telegram-uploader`, Python venv in `/opt/telegram-uploader/.venv` (recreated by `postinst`).
+
+```bash
+# 1. Close the GUI if it is open.
+
+# 2. Stop the stack (recommended)
+docker compose -f /opt/telegram-uploader/docker-compose.yml down
+
+# 3. Install the new package
+sudo apt install ./telegram-uploader_<version>_amd64.deb
+
+# 4. Start as usual — migrations, image rebuild, and worker restart run automatically
+telegram-uploader
+```
+
+You do **not** need to run `--setup` or sign in to Telegram again unless you changed accounts or deleted the session file.
+
+| | First install | Upgrade |
+|--|---------------|---------|
+| `sudo apt install ./…deb` | yes | yes |
+| `telegram-uploader --setup` | once | no |
+| Sign in / `telegram-uploader-login` | once | usually no |
+| `telegram-uploader-check-deps` | recommended | optional |
+
+**Optional — backup Postgres before a major upgrade** (if release notes mention schema migrations):
+
+```bash
+docker compose -f /opt/telegram-uploader/docker-compose.yml down
+docker run --rm \
+  -v telegram-uploader_postgres-data:/data \
+  -v "$HOME:/backup" \
+  alpine tar czf "/backup/telegram-uploader-postgres-$(date +%Y%m%d).tar.gz" -C /data .
+```
+
+There is no auto-update channel yet — download each new `.deb` manually from Releases.
+
+### Building a `.deb` locally
 
 Local build (requires [nfpm](https://nfpm.goreleaser.com/)):
 

@@ -120,12 +120,10 @@ jobs:
             ## Install (Ubuntu 24.04 amd64)
 
             ```bash
-            sudo dpkg -i telegram-uploader_${{ steps.version.outputs.version }}_amd64.deb
-            sudo apt -f install
-            sudo telegram-uploader --setup
-            sudo $EDITOR /etc/telegram-uploader/.env
-            telegram-uploader-login   # Client API auth (once)
-            telegram-uploader         # start stack + GUI
+            sudo apt install ./telegram-uploader_${{ steps.version.outputs.version }}_amd64.deb
+            telegram-uploader-check-deps   # optional
+            telegram-uploader --setup        # first install only
+            telegram-uploader                # Settings → Save → Sign in to Telegram…
             ```
 
-            Requires Docker and docker compose plugin. See README for upgrade notes.
+            Upgrade: see README § Upgrading. Config lives in `~/.config/telegram-uploader/.env`.

@@ -4,13 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import getpass
-import os
-import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-from application.debug_log import agent_debug, path_diagnostics
 
 
 class TelegramSignInError(Exception):
@@ -38,58 +34,13 @@ def _build_client(config: TelegramSignInConfig) -> Any:
 
 async def send_login_code(config: TelegramSignInConfig, phone: str) -> str | None:
     """Request login code. Returns phone_code_hash for the follow-up sign_in step."""
-    # region agent log
-    agent_debug(
-        "A",
-        "telegram_sign_in.py:send_login_code:entry",
-        "send_login_code start",
-        {
-            **path_diagnostics(config.session_path),
-            "thread": threading.current_thread().name,
-            "uid": os.getuid(),
-            "phone_len": len(phone),
-        },
-    )
-    # endregion
-
     client = _build_client(config)
     try:
         await client.connect()
         if await client.is_user_authorized():
-            # region agent log
-            agent_debug(
-                "D",
-                "telegram_sign_in.py:send_login_code:done",
-                "already authorized",
-                {"authorized": True},
-            )
-            # endregion
             return None
         sent = await client.send_code_request(phone)
-        phone_code_hash = str(sent.phone_code_hash)
-        # region agent log
-        agent_debug(
-            "D",
-            "telegram_sign_in.py:send_login_code:done",
-            "send_code_request ok",
-            {"authorized": False, "has_phone_code_hash": bool(phone_code_hash)},
-        )
-        # endregion
-        return phone_code_hash
-    except Exception as error:
-        # region agent log
-        agent_debug(
-            "C",
-            "telegram_sign_in.py:send_login_code:telethon",
-            "telethon failed",
-            {
-                **path_diagnostics(config.session_path),
-                "error_type": type(error).__name__,
-                "error": str(error),
-            },
-        )
-        # endregion
-        raise
+        return str(sent.phone_code_hash)
     finally:
         await client.disconnect()
 
@@ -119,14 +70,6 @@ async def complete_login(
                 await client.sign_in(password=password)
         if not await client.is_user_authorized():
             raise TelegramSignInError("Sign-in did not complete — try Send code again.")
-        # region agent log
-        agent_debug(
-            "D",
-            "telegram_sign_in.py:complete_login:done",
-            "sign_in ok",
-            {"session_path": str(config.session_path)},
-        )
-        # endregion
     finally:
         await client.disconnect()
 
