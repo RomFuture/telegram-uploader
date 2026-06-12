@@ -65,13 +65,12 @@ Download the latest `.deb` from [GitHub Releases](https://github.com/RomFuture/t
 ```bash
 sudo dpkg -i telegram-uploader_0.1.0_amd64.deb
 sudo apt -f install
-sudo telegram-uploader --setup
-sudo $EDITOR /etc/telegram-uploader/.env
-telegram-uploader-login   # Client API auth (once)
-telegram-uploader           # docker compose stack + GUI
+telegram-uploader --setup
+telegram-uploader           # GUI → Settings → Client API
+telegram-uploader-login     # after credentials configured (once)
 ```
 
-Config lives at `/etc/telegram-uploader/.env`. Application files: `/opt/telegram-uploader/`. See [PROJECT.md § Packaging](docs/PROJECT.md#packaging) for upgrade steps.
+Config: `~/.config/telegram-uploader/.env` (created on first run). Application files: `/opt/telegram-uploader/`. See [PROJECT.md § Packaging](docs/PROJECT.md#packaging) for upgrade steps.
 
 Local build (requires [nfpm](https://nfpm.goreleaser.com/)):
 
