@@ -15,10 +15,11 @@ python3 -m venv "${INSTALL_ROOT}/.venv"
 if [ ! -f /etc/telegram-uploader/.env ] && [ -f /etc/telegram-uploader/env.example ]; then
   echo ""
   echo "telegram-uploader installed."
-  echo "  sudo telegram-uploader --setup"
-  echo "  sudo \$EDITOR /etc/telegram-uploader/.env"
-  echo "  telegram-uploader-login   # Client API auth (once)"
-  echo "  telegram-uploader         # start stack + GUI"
+  echo "  telegram-uploader --setup"
+  echo "  telegram-uploader         # GUI → Settings → Client API"
+  echo "  telegram-uploader-login   # after Settings saved (Client API auth once)"
+  echo ""
+  echo "Config file: ~/.config/telegram-uploader/.env (created on first run)"
   echo ""
 fi
 

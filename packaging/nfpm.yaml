@@ -24,6 +24,10 @@ contents:
     dst: /etc/telegram-uploader/env.example
     file_info:
       mode: 0644
+  - src: packaging/bin/env-path.sh
+    dst: /usr/bin/env-path.sh
+    file_info:
+      mode: 0644
   - src: packaging/bin/telegram-uploader
     dst: /usr/bin/telegram-uploader
     file_info:
