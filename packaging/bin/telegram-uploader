@@ -29,15 +29,19 @@ Usage: telegram-uploader [--setup] [--check-deps]
 
   --setup       Create ~/.config/telegram-uploader/.env (once)
   --check-deps  Verify Docker, Python, 7z (same as telegram-uploader-check-deps)
+  --login       One-time Telegram sign-in (phone + code in terminal)
   (default)     Start docker compose stack and open the backup GUI
 
-Configure Telegram in GUI → Settings (Client API).
-Client API login (once): telegram-uploader-login
+Configure Telegram in GUI → Settings → Save, then:
+  telegram-uploader-login   # or Settings → Sign in to Telegram…
 EOF
     exit 0
     ;;
   --check-deps)
     exec telegram-uploader-check-deps
+    ;;
+  --login)
+    exec telegram-uploader-login
     ;;
 esac
 

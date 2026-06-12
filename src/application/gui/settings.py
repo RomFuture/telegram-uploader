@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from tkinter import messagebox, ttk
 from typing import cast
 
+from application.gui.telegram_login import show_login_instructions
 from application.gui.theme import style_toplevel
 from application.settings_values import SettingsValues
 
@@ -120,16 +121,22 @@ class SettingsDialog(tk.Toplevel):
             text="Test Client API",
             command=self._handle_test_client_api,
         )
-        self._test_button.pack(side="left")
+        self._test_button.pack(side="left", padx=(0, 8))
+        ttk.Button(
+            test_row,
+            text="Sign in to Telegram…",
+            command=lambda: show_login_instructions(self),
+        ).pack(side="left")
         row += 1
 
         ttk.Label(
             frame,
             text=(
                 "1. Fill API ID and hash from https://my.telegram.org\n"
-                "2. Save TELEGRAM_* in .env and restart docker compose (workers use .env)\n"
-                "3. Login once: scripts/telegram_client_spike.py --login-only\n"
-                "4. Test uploads docs/refactor/README.md to your backup group"
+                "2. Set backup group ID on the General tab\n"
+                "3. Click Save (writes ~/.config/telegram-uploader/.env)\n"
+                "4. Sign in to Telegram… (one time — phone + code in terminal)\n"
+                "5. Test Client API — uploads a small test file to your group"
             ),
             wraplength=420,
             justify="left",

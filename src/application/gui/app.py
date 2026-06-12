@@ -16,6 +16,7 @@ from application.backend_receiver import (
 from application.gui.drawer import ProgressDrawer
 from application.gui.errors import format_user_error
 from application.gui.explorer import ExplorerView
+from application.env_store import save_settings_env
 from application.gui.settings import SettingsDialog, TestClientApiDialogResult
 from application.gui.theme import apply_theme
 from application.gui.unlock import UnlockScreen
@@ -128,6 +129,22 @@ class BackupApp:
         )
         if dialog.values is not None:
             self._settings = dialog.values
+            try:
+                env_path = save_settings_env(self._settings)
+            except OSError as error:
+                messagebox.showerror(
+                    "Settings not saved",
+                    f"Could not write config file:\n{error}",
+                    parent=self._root,
+                )
+                return
+            messagebox.showinfo(
+                "Settings saved",
+                f"Config written to:\n{env_path}\n\n"
+                "Next: click Sign in to Telegram… on the Client API tab "
+                "(one-time phone login), then Test Client API.",
+                parent=self._root,
+            )
 
     def _lock_session(self) -> None:
         self._session = None

@@ -28,6 +28,10 @@ contents:
     dst: /usr/share/telegram-uploader/check-deps.sh
     file_info:
       mode: 0755
+  - src: packaging/share/telegram-login-intro.txt
+    dst: /usr/share/telegram-uploader/telegram-login-intro.txt
+    file_info:
+      mode: 0644
   - src: packaging/bin/telegram-uploader-check-deps
     dst: /usr/bin/telegram-uploader-check-deps
     file_info:

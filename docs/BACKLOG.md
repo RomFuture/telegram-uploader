@@ -245,7 +245,7 @@ KeePassXC-style layout + theme fix — **первая итерация** (2026-0
 
 - [x] **Test Client API — test file в .deb** — bundled `share/client_api_test.md` в пакете; `_client_api_test_file()` ищет `share/` затем `docs/refactor/README.md`.
 - [x] **Проверка зависимостей при установке** — `check-deps.sh`, `telegram-uploader-check-deps`, postinst + launcher; README: `apt install ./deb` не `dpkg -i` alone.
-- [ ] **Settings → сохранение в `~/.config/telegram-uploader/.env`** — сейчас credentials только в памяти GUI; workers читают `.env` через compose. Save в Settings должен писать файл и подсказывать `docker compose restart` workers.
+- [ ] **Settings → сохранение в `~/.config/telegram-uploader/.env`** — Save пишет `.env`; Sign in to Telegram… + `telegram-uploader-login` с intro. Gate: Save → login → Test Client API OK.
 
 **Gate:** `.deb` install → Settings → Test Client API → OK (или понятная ошибка auth, не missing file); Save → backup smoke.
 

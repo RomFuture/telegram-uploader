@@ -33,10 +33,17 @@ from infrastructure.providers.telegram_client_provider import (  # noqa: E402
 def _load_provider() -> tuple[AppConfig, TelegramClientProvider]:
     cfg = load_config()
     if cfg.telegram_api_id is None or not cfg.telegram_api_hash:
-        print("error: set TELEGRAM_API_ID and TELEGRAM_API_HASH in .env", file=sys.stderr)
+        print(
+            "error: set TELEGRAM_API_ID and TELEGRAM_API_HASH in Settings → Save,\n"
+            "  or in ~/.config/telegram-uploader/.env",
+            file=sys.stderr,
+        )
         raise SystemExit(1)
     if not cfg.telegram_target_chat_id:
-        print("error: set TELEGRAM_TARGET_CHAT_ID in .env", file=sys.stderr)
+        print(
+            "error: set TELEGRAM_TARGET_CHAT_ID in Settings → General → Save",
+            file=sys.stderr,
+        )
         raise SystemExit(1)
 
     cfg.telegram_session_path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,6 +64,7 @@ def _run_login_only(cfg: AppConfig, provider: TelegramClientProvider) -> int:
         )
         return 1
     print(f"Login OK — session saved to {cfg.telegram_session_path}")
+    print("You can close this window and use Test Client API or Start Backup in the app.")
     return 0
 
 
@@ -118,7 +126,8 @@ def main() -> int:
         parser.print_help()
         print(
             "\nQuick start:\n"
-            "  PYTHONPATH=src .venv/bin/python scripts/telegram_client_spike.py --login-only",
+            "  telegram-uploader-login\n"
+            "  # or: PYTHONPATH=src .venv/bin/python scripts/telegram_client_spike.py --login-only",
             file=sys.stderr,
         )
         return 1

@@ -171,8 +171,11 @@ class BackendReceiver:
                 ok=False,
                 stage="session",
                 message=(
-                    f"Session file not found: {session_path}\n"
-                    "Run scripts/telegram_client_spike.py --login-only first."
+                    f"Session file not found: {session_path}\n\n"
+                    "Sign in once with your Telegram account (phone + code):\n"
+                    "  Settings → Client API → Sign in to Telegram…\n"
+                    "  or in a terminal: telegram-uploader-login\n\n"
+                    "Save Settings first so API id/hash and group ID are on disk."
                 ),
             )
 

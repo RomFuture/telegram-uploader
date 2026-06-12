@@ -24,10 +24,13 @@ OUTPUT_DIR="${ROOT}/dist"
 NFPM_CONFIG="${ROOT}/dist/nfpm.generated.yaml"
 
 rm -rf "$STAGING"
-mkdir -p "$STAGING/opt/telegram-uploader/scripts" "$STAGING/opt/telegram-uploader/share" "$STAGING/etc/telegram-uploader" "$STAGING/usr/share/doc/telegram-uploader"
+mkdir -p "$STAGING/opt/telegram-uploader/scripts" "$STAGING/opt/telegram-uploader/share" \
+  "$STAGING/usr/share/telegram-uploader" "$STAGING/etc/telegram-uploader" \
+  "$STAGING/usr/share/doc/telegram-uploader"
 
 cp -a src pyproject.toml README.md docker-compose.yml Dockerfile "$STAGING/opt/telegram-uploader/"
 cp packaging/assets/client_api_test.md "$STAGING/opt/telegram-uploader/share/"
+cp packaging/share/telegram-login-intro.txt "$STAGING/usr/share/telegram-uploader/"
 if [[ -f scripts/telegram_client_spike.py ]]; then
   cp scripts/telegram_client_spike.py "$STAGING/opt/telegram-uploader/scripts/"
 fi
