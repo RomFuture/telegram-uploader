@@ -15,7 +15,7 @@ def test_save_settings_env_writes_telegram_keys(tmp_path: Path, monkeypatch) -> 
             telegram_provider="client",
             telegram_api_id="36040005",
             telegram_api_hash="abc123",
-            telegram_session_path="/tmp/telegram_uploader/session.session",
+            telegram_session_path="",
             telegram_bot_token="",
             telegram_bot_api_url="http://localhost:8081",
             archive_ram_limit_mb=1024,
@@ -29,6 +29,35 @@ def test_save_settings_env_writes_telegram_keys(tmp_path: Path, monkeypatch) -> 
     assert "TELEGRAM_SESSION_PATH=" in text
     assert "/.config/telegram-uploader/session.session" in text
     assert "TELEGRAM_SESSION_DIR=" in text
+    assert "/.config/telegram-uploader" in text
+
+
+def test_save_settings_env_migrates_unwritable_session_path(tmp_path: Path, monkeypatch) -> None:
+    env_path = tmp_path / "telegram-uploader" / ".env"
+    monkeypatch.setattr("application.env_store.user_env_path", lambda: env_path)
+    readonly_dir = tmp_path / "readonly_session"
+    readonly_dir.mkdir()
+    readonly_dir.chmod(0o555)
+    session = readonly_dir / "session.session"
+    try:
+        save_settings_env(
+            SettingsValues(
+                encryption_key=None,
+                target_chat_id="-100123",
+                telegram_provider="client",
+                telegram_api_id="36040005",
+                telegram_api_hash="abc123",
+                telegram_session_path=str(session),
+                telegram_bot_token="",
+                telegram_bot_api_url="http://localhost:8081",
+                archive_ram_limit_mb=1024,
+            )
+        )
+    finally:
+        readonly_dir.chmod(0o755)
+
+    text = env_path.read_text()
+    assert "/.config/telegram-uploader/session.session" in text
     assert "/.config/telegram-uploader" in text
 
 
