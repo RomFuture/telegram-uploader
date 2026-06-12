@@ -81,7 +81,7 @@ def build_client_provider(
 
 def _client_api_test_file() -> Path:
     bundled = Path(__file__).resolve().parent / "data" / "client_api_test.md"
-    candidates = (
+    candidates: tuple[Path, ...] = (
         bundled,
         Path("/opt/telegram-uploader/share/client_api_test.md"),
     )

@@ -72,7 +72,11 @@ class SevenZipService:
         outgoing_dir = work_dir / "outgoing"
         raw_dir.mkdir(parents=True, exist_ok=True)
         outgoing_dir.mkdir(parents=True, exist_ok=True)
-        self._clear_stale_volumes(raw_dir, outgoing_dir, manifest_path=work_dir / "volume_manifest.json")
+        self._clear_stale_volumes(
+            raw_dir,
+            outgoing_dir,
+            manifest_path=work_dir / "volume_manifest.json",
+        )
 
         archive_base = raw_dir / "payload.7z"
         self._run_7z(source_path=source_path, archive_path=archive_base, encryption_key=key)
