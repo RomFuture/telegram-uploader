@@ -11,6 +11,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import cast
 
+from application.debug_log import agent_debug, path_diagnostics
 from application.env_store import save_settings_env
 from application.gui.theme import style_toplevel
 from application.settings_values import SettingsValues
@@ -21,7 +22,7 @@ from application.telegram_sign_in import (
     run_complete_login,
     run_send_login_code,
 )
-from infrastructure.paths import default_session_path
+from infrastructure.paths import session_path_for_use
 
 PRIVACY_MESSAGE = """Telegram sign-in (one time)
 
@@ -79,8 +80,21 @@ def _missing_fields(settings: SettingsValues) -> list[str]:
 
 
 def _sign_in_config(settings: SettingsValues) -> TelegramSignInConfig:
-    session_raw = settings.telegram_session_path.strip()
-    session_path = Path(session_raw) if session_raw else default_session_path()
+    session_path = session_path_for_use(settings.telegram_session_path)
+    # region agent log
+    agent_debug(
+        "E",
+        "telegram_login.py:_sign_in_config",
+        "resolved sign-in session path",
+        {
+            "session_raw": settings.telegram_session_path.strip(),
+            "session_resolved": str(session_path),
+            **path_diagnostics(session_path),
+            "migrated_from_tmp": settings.telegram_session_path.strip().startswith("/tmp/"),
+        },
+        run_id="post-fix",
+    )
+    # endregion
     return TelegramSignInConfig(
         api_id=int(settings.telegram_api_id.strip()),
         api_hash=settings.telegram_api_hash.strip(),

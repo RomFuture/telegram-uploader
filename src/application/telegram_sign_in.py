@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import getpass
+import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
+
+from application.debug_log import agent_debug, path_diagnostics
 
 
 class TelegramSignInError(Exception):
@@ -27,13 +31,64 @@ class TelegramSignInConfig:
 async def send_login_code(config: TelegramSignInConfig, phone: str) -> None:
     from telethon import TelegramClient
 
-    config.session_path.parent.mkdir(parents=True, exist_ok=True)
+    # region agent log
+    agent_debug(
+        "A",
+        "telegram_sign_in.py:send_login_code:entry",
+        "send_login_code start",
+        {
+            **path_diagnostics(config.session_path),
+            "thread": threading.current_thread().name,
+            "uid": os.getuid(),
+            "phone_len": len(phone),
+            "has_dollar_home": "${HOME}" in str(config.session_path),
+            "has_tilde": str(config.session_path).startswith("~"),
+        },
+    )
+    # endregion
+
+    try:
+        config.session_path.parent.mkdir(parents=True, exist_ok=True)
+        # region agent log
+        agent_debug(
+            "B",
+            "telegram_sign_in.py:send_login_code:mkdir",
+            "mkdir succeeded",
+            path_diagnostics(config.session_path),
+        )
+        # endregion
+    except OSError as error:
+        # region agent log
+        agent_debug(
+            "B",
+            "telegram_sign_in.py:send_login_code:mkdir",
+            "mkdir failed",
+            {**path_diagnostics(config.session_path), "error": str(error)},
+        )
+        # endregion
+        raise
+
     client = TelegramClient(str(config.session_path), config.api_id, config.api_hash)
-    async with client:
-        await client.connect()
-        if await client.is_user_authorized():
-            return
-        await client.send_code_request(phone)
+    try:
+        async with client:
+            await client.connect()
+            if await client.is_user_authorized():
+                return
+            await client.send_code_request(phone)
+    except Exception as error:
+        # region agent log
+        agent_debug(
+            "C",
+            "telegram_sign_in.py:send_login_code:telethon",
+            "telethon failed",
+            {
+                **path_diagnostics(config.session_path),
+                "error_type": type(error).__name__,
+                "error": str(error),
+            },
+        )
+        # endregion
+        raise
 
 
 async def complete_login(

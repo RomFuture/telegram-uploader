@@ -26,7 +26,10 @@ def test_save_settings_env_writes_telegram_keys(tmp_path: Path, monkeypatch) -> 
     assert "TELEGRAM_API_ID=36040005" in text
     assert "TELEGRAM_API_HASH=abc123" in text
     assert "TELEGRAM_TARGET_CHAT_ID=-100123" in text
-    assert "TELEGRAM_SESSION_DIR=/tmp/telegram_uploader" in text
+    assert "TELEGRAM_SESSION_PATH=" in text
+    assert "/.config/telegram-uploader/session.session" in text
+    assert "TELEGRAM_SESSION_DIR=" in text
+    assert "/.config/telegram-uploader" in text
 
 
 def test_merge_env_file_preserves_unknown_keys(tmp_path: Path) -> None:

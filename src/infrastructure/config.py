@@ -1,8 +1,9 @@
+import os
 from dataclasses import dataclass
 from os import environ, getenv
 from pathlib import Path
 
-from infrastructure.paths import default_cache_dir, default_session_path
+from infrastructure.paths import default_cache_dir, session_path_for_use
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,7 @@ def _load_dotenv(path: Path | None = None) -> None:
             key, value = line.split("=", maxsplit=1)
             key = key.strip()
             value = value.strip().strip('"').strip("'")
+            value = os.path.expandvars(os.path.expanduser(value))
             if key and key not in environ:
                 environ[key] = value
         return
@@ -69,7 +71,7 @@ def load_config() -> AppConfig:
     raw_key = getenv("ARCHIVE_ENCRYPTION_KEY", "").strip()
     raw_cache_dir = getenv("ARCHIVE_CACHE_DIR", str(default_cache_dir())).strip()
     raw_api_id = getenv("TELEGRAM_API_ID", "").strip()
-    raw_session_path = getenv("TELEGRAM_SESSION_PATH", str(default_session_path())).strip()
+    raw_session_path = getenv("TELEGRAM_SESSION_PATH", "").strip()
     return AppConfig(
         app_env=getenv("APP_ENV", "development"),
         app_log_level=getenv("APP_LOG_LEVEL", "INFO"),
@@ -80,7 +82,7 @@ def load_config() -> AppConfig:
         telegram_bot_api_url=getenv("TELEGRAM_BOT_API_URL", "http://localhost:8081"),
         telegram_api_id=int(raw_api_id) if raw_api_id.isdigit() else None,
         telegram_api_hash=getenv("TELEGRAM_API_HASH", ""),
-        telegram_session_path=Path(raw_session_path),
+        telegram_session_path=session_path_for_use(raw_session_path or None),
         telegram_target_chat_id=getenv("TELEGRAM_TARGET_CHAT_ID", ""),
         archive_encryption_key=raw_key if raw_key else None,
         archive_cache_dir=Path(raw_cache_dir),

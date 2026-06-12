@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from application.settings_values import SettingsValues
-from infrastructure.paths import default_session_path
+from infrastructure.paths import session_path_for_use
 
 _ENV_KEYS = (
     "TELEGRAM_PROVIDER",
@@ -27,18 +27,14 @@ def user_env_path() -> Path:
     return config_home / "telegram-uploader" / ".env"
 
 
-def _session_dir_from_path(session_path: str) -> str:
-    return str(Path(session_path).parent) if session_path else ""
-
-
 def settings_to_env_updates(values: SettingsValues) -> dict[str, str]:
-    session_path = values.telegram_session_path.strip() or str(default_session_path())
+    session_path = session_path_for_use(values.telegram_session_path)
     updates: dict[str, str] = {
         "TELEGRAM_PROVIDER": values.telegram_provider.strip() or "client",
         "TELEGRAM_API_ID": values.telegram_api_id.strip(),
         "TELEGRAM_API_HASH": values.telegram_api_hash.strip(),
-        "TELEGRAM_SESSION_PATH": session_path,
-        "TELEGRAM_SESSION_DIR": _session_dir_from_path(session_path),
+        "TELEGRAM_SESSION_PATH": str(session_path),
+        "TELEGRAM_SESSION_DIR": str(session_path.parent),
         "TELEGRAM_TARGET_CHAT_ID": values.target_chat_id.strip(),
         "TELEGRAM_BOT_TOKEN": values.telegram_bot_token.strip(),
         "TELEGRAM_BOT_API_URL": values.telegram_bot_api_url.strip() or "http://localhost:8081",
