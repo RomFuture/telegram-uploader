@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# Packaged launcher: docker compose stack + GUI (same flow as scripts/run.sh).
+set -euo pipefail
+
+INSTALL_ROOT="/opt/telegram-uploader"
+ENV_DIR="/etc/telegram-uploader"
+ENV_FILE="${ENV_DIR}/.env"
+ENV_EXAMPLE="${ENV_DIR}/env.example"
+VENV_PYTHON="${INSTALL_ROOT}/.venv/bin/python"
+COMPOSE_FILE="${INSTALL_ROOT}/docker-compose.yml"
+LOGIN_SCRIPT="${INSTALL_ROOT}/scripts/telegram_client_spike.py"
+
+require_env_file() {
+  if [[ -f "$ENV_FILE" ]]; then
+    return 0
+  fi
+  if [[ ! -f "$ENV_EXAMPLE" ]]; then
+    echo "error: ${ENV_EXAMPLE} not found — reinstall telegram-uploader package." >&2
+    exit 1
+  fi
+  cat >&2 <<EOF
+error: ${ENV_FILE} not found.
+
+  sudo cp ${ENV_EXAMPLE} ${ENV_FILE}
+  sudo \$EDITOR ${ENV_FILE}
+
+Then configure Telegram credentials:
+  /usr/share/doc/telegram-uploader/README.gz (or docs/CLIENT_API_SETUP.md in source)
+EOF
+  exit 1
+}
+
+load_env() {
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+}
+
+is_placeholder() {
+  local value="${1:-}"
+  case "$value" in
+    "" | change_me | your_api_hash_here | change_me_or_leave_empty_for_auto) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+validate_telegram_setup() {
+  local errors=()
+  local provider="${TELEGRAM_PROVIDER:-client}"
+
+  if is_placeholder "${TELEGRAM_TARGET_CHAT_ID:-}"; then
+    errors+=("TELEGRAM_TARGET_CHAT_ID must be the numeric id of your backup group")
+  fi
+
+  if [[ "$provider" == "client" ]]; then
+    if is_placeholder "${TELEGRAM_API_ID:-}" || ! [[ "${TELEGRAM_API_ID:-}" =~ ^[0-9]+$ ]]; then
+      errors+=("TELEGRAM_API_ID must be a numeric api_id from https://my.telegram.org")
+    fi
+    if is_placeholder "${TELEGRAM_API_HASH:-}"; then
+      errors+=("TELEGRAM_API_HASH must be your api_hash from https://my.telegram.org")
+    fi
+  else
+    if is_placeholder "${TELEGRAM_API_ID:-}" || ! [[ "${TELEGRAM_API_ID:-}" =~ ^[0-9]+$ ]]; then
+      errors+=("TELEGRAM_API_ID must be a numeric api_id from https://my.telegram.org")
+    fi
+    if is_placeholder "${TELEGRAM_API_HASH:-}"; then
+      errors+=("TELEGRAM_API_HASH must be your api_hash from https://my.telegram.org")
+    fi
+    if is_placeholder "${TELEGRAM_BOT_TOKEN:-}"; then
+      errors+=("TELEGRAM_BOT_TOKEN must be the bot token from @BotFather (or set TELEGRAM_PROVIDER=client)")
+    fi
+  fi
+
+  if ((${#errors[@]} == 0)); then
+    return 0
+  fi
+
+  echo "error: Telegram credentials missing or invalid in ${ENV_FILE}:" >&2
+  for msg in "${errors[@]}"; do
+    echo "  - $msg" >&2
+  done
+  echo >&2
+  echo "Setup guide: docs/CLIENT_API_SETUP.md (in source repo) or package README." >&2
+  if [[ "${TELEGRAM_PROVIDER:-client}" == "client" ]]; then
+    echo "Client API auth (once): telegram-uploader-login" >&2
+  fi
+  exit 1
+}
+
+case "${1:-}" in
+  --setup)
+    if [[ ! -f "$ENV_EXAMPLE" ]]; then
+      echo "error: ${ENV_EXAMPLE} missing." >&2
+      exit 1
+    fi
+    if [[ -f "$ENV_FILE" ]]; then
+      echo "${ENV_FILE} already exists."
+      exit 0
+    fi
+    cp "$ENV_EXAMPLE" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    echo "Created ${ENV_FILE}. Edit it, then run: telegram-uploader"
+    exit 0
+    ;;
+  --help|-h)
+    cat <<EOF
+Usage: telegram-uploader [--setup]
+
+  --setup   Copy env.example to ${ENV_FILE} (once)
+  (default) Start docker compose stack and open the backup GUI
+
+Client API login (once):
+  telegram-uploader-login
+EOF
+    exit 0
+    ;;
+esac
+
+require_env_file
+load_env
+validate_telegram_setup
+
+export TELEGRAM_UPLOADER_ENV_FILE="$ENV_FILE"
+cd "$INSTALL_ROOT"
+
+if ! docker compose -f "$COMPOSE_FILE" up -d --build; then
+  echo "error: docker compose failed." >&2
+  docker compose -f "$COMPOSE_FILE" logs --tail=30 telegram-bot-api >&2 || true
+  exit 1
+fi
+
+docker compose -f "$COMPOSE_FILE" restart \
+  celery-worker-archive-1 \
+  celery-worker-archive-2 \
+  celery-worker-upload \
+  celery-worker-cleanup \
+  celery-worker-restore
+
+session_path="${TELEGRAM_SESSION_PATH:-/tmp/telegram_uploader/session.session}"
+session_dir="${TELEGRAM_SESSION_DIR:-$(dirname "$session_path")}"
+mkdir -p "$session_dir"
+if [[ "${TELEGRAM_PROVIDER:-client}" == "client" && ! -f "$session_path" ]]; then
+  echo "warning: Client API session not found at $session_path" >&2
+  echo "  Run once: telegram-uploader-login" >&2
+  echo "  Workers share this file via TELEGRAM_SESSION_DIR=$session_dir" >&2
+fi
+
+if [[ ! -x "$VENV_PYTHON" ]]; then
+  echo "error: ${VENV_PYTHON} not found — reinstall telegram-uploader package." >&2
+  exit 1
+fi
+
+echo "Applying database migrations..."
+"$VENV_PYTHON" -c "from infrastructure.config import load_config; from infrastructure.db.migrate import apply_migrations; apply_migrations(load_config().postgres_dsn)"
+echo "Starting GUI (Unlock → folders → backup/restore)..."
+if [[ -x "$LOGIN_SCRIPT" ]]; then
+  echo "Client API login (once): telegram-uploader-login"
+fi
+exec "$VENV_PYTHON" -m application.gui

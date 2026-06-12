@@ -43,7 +43,7 @@ docker compose logs -f celery-worker-archive-1
 
 ### Gate и smoke — **обязательный этап** (не опционально)
 
-> Полные определения и цикл → **[ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md)**
+> Полные определения и цикл → **[PROJECT.md §10](PROJECT.md#10-режим-работы)**
 
 | Термин | Суть |
 |--------|------|
@@ -52,7 +52,7 @@ docker compose logs -f celery-worker-archive-1
 
 **Без закрытого gate следующий слой / пункт бэклога не начинаем.**
 
-**Roman vs ИИ:** smoke и закрытие gate — **только Roman руками**; ИИ пишет код и тесты, но не засчитывает «готово». Таблица → [ONION_LAYER_IMPLEMENTATION.md §4](ONION_LAYER_IMPLEMENTATION.md#4-обязательный-цикл-на-каждую-заметную-правку).
+**Roman vs ИИ:** smoke и закрытие gate — **только Roman руками**; ИИ пишет код и тесты, но не засчитывает «готово». Таблица → [PROJECT.md §10](PROJECT.md#10-режим-работы).
 
 ### Как закрывать пункты бэклога
 
@@ -69,10 +69,11 @@ docker compose logs -f celery-worker-archive-1
 
 **Цель:** на встрече с другом показать, что **первая версия уже есть** — не финал, но клонируется и запускается. Приоритет **над** косметикой GUI и P4 domain.
 
-- [ ] **`scripts/run.sh`** (или `make demo`) — **один скрипт**: `docker compose up -d` + миграции + инструкция/GUI
-- [ ] **`.github/workflows/ci.yml`** — ruff, mypy, `pytest -m "not integration"` на push/PR
+- [x] **`scripts/run.sh`** — one-command demo: compose + GUI
+- [x] **`.github/workflows/ci.yml`** — ruff, mypy, pytest, lint-imports on push/PR
 - [x] **README** + **[TELEGRAM_SETUP.md](TELEGRAM_SETUP.md)** — setup from scratch (bot, API keys, group, `./scripts/run.sh`, smoke backup)
 - [ ] **Onboarding automation** — GUI wizard: API id/hash, bot, group id, `.env`; позже Client API login ([README](../README.md#onboarding-automation-planned))
+- [ ] **Client API setup guide (beginner-friendly)** — переписать [CLIENT_API_SETUP.md](CLIENT_API_SETUP.md) «нативно»: без CLI-жаргона, пошагово «куда нажать / что скопировать», скриншоты my.telegram.org и Telegram, что такое session file простыми словами, отдельный блок «если ничего не понятно»; целевая аудитория — пользователь без опыта в терминале. **Gate:** человек без dev-навыков проходит auth + первый backup по одному документу (Roman проверяет на «чистом» знакомом).
 - [ ] Backup happy path работает *(уже есть)* · Client API / restore — по возможности, не блокер demo если backup стабилен
 
 **Gate P-demo:** друг (или ты на чистой машине) повторяет **одну команду** после clone; CI на `main` зелёный; smoke backup пройден.
@@ -160,39 +161,34 @@ docker compose logs -f celery-worker-archive-1
 
 **Главный приоритет.** Текущий код работает, но архитектурно разъехался; чинить **слой за слоем**, начиная с `use_cases`.
 
-Референс: [ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md), границы — `tests/test_layer_boundaries.py`.
+Референс: [PROJECT.md §4–5](PROJECT.md#4-архитектура), границы — `tests/test_layer_boundaries.py`.
 
 ### P0.1 — `use_cases` (первый проход)
 
 - [ ] Аудит пакета: дубли, лишние зависимости, согласованность портов и `*Record`
 - [ ] Выровнять restore/upload ref helpers под будущий Client API (см. [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md))
 - [x] Pipeline rules вынесены из `domain`: `backup/gates.py`, `backup/idempotency.py`, `restore/refs.py`
-- [x] Idempotency policy в `use_cases/backup/idempotency.py` (не в `domain`, не в `tasks.py`)
-- [ ] Failed-status wiring в Celery `tasks.py` (P0.2)
-- [ ] Убрать tech debt, вскрытый при ревью (мапперы, loading, дубли в backup/restore)
-- [ ] Тесты после каждого блока правок: `pytest tests/test_use_cases_*.py -v`
+- [x] Idempotency policy в `use_cases/backup/idempotency.py`
+- [x] Failed-status wiring в Celery `tasks.py` (UC-4)
+- [x] Public API: `BackupApi` / `WorkerApi`; facade удалён (UC-3)
+- [x] Restore refs + extract → `dest_path` (UC-5, UC-7)
 
 **Gate:** слой читается как эталон; ты прошёл backup happy path вручную после правок.
 
 ### P0.2 — `infrastructure`
 
-- [ ] Аудит: bootstrap/facade wiring, провайдеры, workers, db mappers
-- [ ] Client API provider (можно встроить в этот проход) — [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md)
-- [ ] Убрать/изолировать legacy Bot API после client stable
+- [x] `TelegramClientProvider` + `TELEGRAM_PROVIDER` switch — [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md)
+- [ ] Deprecate Bot API после стабильного client restore smoke
 - [ ] Structured logging (минимум — единый формат в worker/bootstrap)
-- [ ] Failed pipeline rollback на уровне use case + корректные статусы в БД
 
 **Gate:** `docker compose up` + полный backup smoke; restore download без 404 (после Client API).
 
 ### P0.3 — `application` + GUI
 
-- [ ] Аудит `backend_receiver` — только facade, тонкие DTO
-- [ ] **Доработка GUI** (не только MVP):
-  - [ ] Понятные ошибки (не сырой traceback)
-  - [ ] Отображение failed / stuck статусов
-  - [ ] Settings: encryption key, target chat (после Client API — session auth)
-  - [ ] Restore UX: прогресс, куда сохранилось, ошибки download/extract
-- [ ] (Позже) GUI в контейнере — единая FS с workers
+- [x] `backend_receiver` → `BackupApi`, тонкие DTO
+- [x] R3: autoclave key messagebox + clipboard
+- [x] Понятные ошибки, failed/stuck статусы, restore UX, Settings MVP
+- [x] PROJECT §12 full GUI (Unlock, explorer, drawer, restore, Client login)
 
 **Gate:** ты сам прошёл полный сценарий в GUI после правок слоя.
 
@@ -200,23 +196,54 @@ docker compose logs -f celery-worker-archive-1
 
 ## P1 — Restore end-to-end (product)
 
-После P0.2 (download) + частично P0.1:
+После Client API smoke:
 
-- [ ] Скачать все volumes по `part_number`
-- [ ] 7z decrypt/extract с `encryption_key` сессии
-- [ ] Результат в **user-selected `dest_path`** (баг: сейчас пишет в staging)
-- [ ] Статусы restore: success / `failed`
+- [x] Скачать volumes + 7z extract в `dest_path` (UC-7)
 - [ ] Resume downloads (nice to have)
 
 **Gate:** Restore Session → оригинальный файл в выбранной папке; ручная проверка.
 
 ---
 
+## P1.1 — GUI: файлы и импорт из Telegram
+
+### Сделано (2026-06)
+
+- [x] Контекстное меню файла (double-click / ПКМ): **Rename**, **Move to folder**, **Delete**
+- [x] Минималистичная тёмная тема (unlock card + explorer)
+
+### Запланировано
+
+- [ ] **Import from Telegram group** — подтянуть архивы из backup-группы, которых **нет в GUI** (orphan messages / volumes без `source_item`):
+  1. Скан группы (`TELEGRAM_TARGET_CHAT_ID`) по `client:` refs, которых нет в БД текущей session.
+  2. Скачать + распаковать во **временную** папку restore staging.
+  3. Создать виртуальную папку **`Restored`** (или «Восстановленное») и импортировать записи туда.
+  4. В таблице такие файлы помечать **жёлтым замочком** (`external` / «imported from Telegram») — не были добавлены через Add File.
+  5. Пользователь может переименовать / перенести / удалить / повторно backup как обычный item.
+- [ ] **Restore Session UX** — отдельная пустая папка по умолчанию; restore всех completed items по одному extract на файл (частично сделано в UC-7).
+
+**Gate:** в группе есть backup без записи в GUI → Import → файл в папке «Restored» с замочком → rename/move работает.
+
+---
+
+## P1.2 — GUI visual polish
+
+KeePassXC-style layout + theme fix — **первая итерация** (2026-06). Визуал ещё сырой: ttk edge cases, spacing, dialogs, toolbar.
+
+### Запланировано
+
+- [ ] **Второй проход по GUI** — контраст и ttk maps (Settings tabs, Combobox popup, TButton states), toolbar/icons, spacing, unlock card, progress drawer, единая типографика; pixel-perfect KeePassXC не цель, но **читаемость и целостность** — да.
+- [ ] Проверка на установленном `.deb` (Ubuntu 24.04): все экраны читаемы, нет белого на белом, layout стабилен при resize.
+
+**Gate:** Roman smoke после `.deb` install — Unlock, vault, Settings, context menu; resize окна без артефактов.
+
+---
+
 ## P2 — Observation / CI
 
 - [ ] **AI agent skills** — [AI_AGENT_SKILLS.md](AI_AGENT_SKILLS.md): `.cursor/skills/` (onion-layers, gate-and-smoke); wire stop-slop for prose; clone `--recurse-submodules`
-- [ ] `import-linter` + `.importlinter` (adjacent-layer contracts)
-- [ ] `.github/workflows/ci.yml` — ruff, mypy, `pytest -m "not integration"`, `lint-imports`
+- [x] `import-linter` + `.importlinter` (UC-8)
+- [x] `.github/workflows/ci.yml` — ruff, mypy, pytest, lint-imports
 - [ ] `src/observation/health.py` (optional) — postgres, redis, telegram session
 - [ ] `logs/` в `.gitignore` для session logs
 
@@ -236,7 +263,7 @@ docker compose logs -f celery-worker-archive-1
 
 **Итог:** ядро = `models.py` + `actions.py` + `errors.py`. Вынесено в `use_cases`: not-found (`loading`), backup gates, idempotency, restore refs. `guards.py` / `scenarios.py` удалены.
 
-**Gate закрыт:** границы зафиксированы в [ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md) и `tests/test_layer_boundaries.py`; 77 unit-тестов зелёные.
+**Gate закрыт:** границы зафиксированы в [PROJECT.md](PROJECT.md) и `tests/test_layer_boundaries.py`; unit-тесты зелёные.
 
 Опционально позже (не блокер): generic `verify`/`mark` с `@overload` — только если при ревью `use_cases` станет больно без этого.
 
@@ -246,8 +273,7 @@ docker compose logs -f celery-worker-archive-1
 
 ## P5 — Docs sync
 
-- [ ] [ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md) — Client API в runtime stack, актуальные диаграммы
-- [ ] Root [IMPLEMENTATION_GUIDE.md](../IMPLEMENTATION_GUIDE.md) — archive or trim
+- [x] [PROJECT.md](PROJECT.md) — синхрон с кодом после R2–R8 (R8)
 
 ---
 

@@ -1,0 +1,40 @@
+# nfpm manifest — version/arch filled by scripts/build_deb.sh at build time.
+name: telegram-uploader
+arch: amd64
+platform: linux
+version: "${VERSION}"
+section: utils
+priority: optional
+maintainer: Roman <romfuture@users.noreply.github.com>
+description: |
+  Linux desktop backup into Telegram messenger storage.
+  Includes docker compose stack (Postgres, Redis, Celery workers) and Tkinter GUI.
+depends:
+  - docker.io | docker-ce
+  - docker-compose-plugin
+  - python3 (>= 3.12)
+  - python3-venv
+  - python3-tk
+  - p7zip-full
+contents:
+  - src: ${STAGING}/opt/telegram-uploader
+    dst: /opt/telegram-uploader
+    type: tree
+  - src: ${STAGING}/etc/telegram-uploader/env.example
+    dst: /etc/telegram-uploader/env.example
+    file_info:
+      mode: 0644
+  - src: packaging/bin/telegram-uploader
+    dst: /usr/bin/telegram-uploader
+    file_info:
+      mode: 0755
+  - src: packaging/bin/telegram-uploader-login
+    dst: /usr/bin/telegram-uploader-login
+    file_info:
+      mode: 0755
+  - src: ${STAGING}/usr/share/doc/telegram-uploader
+    dst: /usr/share/doc/telegram-uploader
+    type: tree
+scripts:
+  postinstall: packaging/debian/postinst
+  preremove: packaging/debian/prerm

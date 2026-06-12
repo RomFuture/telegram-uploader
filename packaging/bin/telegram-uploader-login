@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Client API one-time login for packaged install.
+set -euo pipefail
+
+INSTALL_ROOT="/opt/telegram-uploader"
+ENV_FILE="/etc/telegram-uploader/.env"
+VENV_PYTHON="${INSTALL_ROOT}/.venv/bin/python"
+LOGIN_SCRIPT="${INSTALL_ROOT}/scripts/telegram_client_spike.py"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "error: ${ENV_FILE} not found. Run: telegram-uploader --setup" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+if [[ ! -x "$VENV_PYTHON" ]]; then
+  echo "error: ${VENV_PYTHON} not found — reinstall telegram-uploader package." >&2
+  exit 1
+fi
+
+if [[ ! -f "$LOGIN_SCRIPT" ]]; then
+  echo "error: ${LOGIN_SCRIPT} not found." >&2
+  exit 1
+fi
+
+exec "$VENV_PYTHON" "$LOGIN_SCRIPT" --login-only

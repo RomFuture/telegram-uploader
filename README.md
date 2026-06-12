@@ -2,7 +2,7 @@
 
 Linux desktop backup into messenger storage. v1 ships Telegram only. The core speaks `StorageProviderPort`, so you can add Max or VK adapters later.
 
-Docs: [PROJECT.md](docs/PROJECT.md) · [BACKLOG.md](docs/BACKLOG.md) · [ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md)
+Docs: [PROJECT.md](docs/PROJECT.md) (architecture + refactor plan) · [BACKLOG.md](docs/BACKLOG.md)
 
 ## Backup flow
 
@@ -17,11 +17,12 @@ You pick files in the GUI (English UI; `display_name` lands at enqueue). Workers
 | Restore download (Bot API) | Fails with HTTP 404 |
 | Restore extract (7z → original file) | Missing |
 | Telegram Client API (MTProto) | Planned ([migration](docs/TELEGRAM_CLIENT_API_MIGRATION.md)) |
-| CI: ruff, mypy, pytest | Partial ([workflow](.github/workflows/ci.yml)) |
-| CD: `.deb` package + upgrades | Planned ([packaging](docs/PROJECT.md#packaging--cd-p005--planned)) |
-| `import-linter`, observation layer | Missing |
+| CI: ruff, mypy, pytest, lint-imports | Done ([workflow](.github/workflows/ci.yml)) |
+| CD: `.deb` on tag `v*` | Done ([release](.github/workflows/release.yml)) |
 
-Active refactor order: `use_cases`, then `infrastructure`, then `application`. Details live in the backlog.
+**Start here (maintainer):** [docs/PROJECT.md](docs/PROJECT.md) — architecture, refactor PR plan (R2–R8), gate/smoke rules.
+
+Active work: **Phase 1 refactor** (narrow API, drop facade hop). Open features → [BACKLOG.md](docs/BACKLOG.md).
 
 ## Setup from scratch
 
@@ -56,6 +57,27 @@ Then run:
 The script checks `.env` for placeholder/missing Telegram keys **before** `docker compose up`, then starts Postgres, Redis, `telegram-bot-api`, Celery workers, restarts workers to pick up code changes, and opens the Tkinter GUI.
 
 Smoke: Start Session → Add File → Start Backup → Refresh Progress. Volumes should appear in your Telegram group as `display-name.7z.001`. See [TELEGRAM_SETUP.md § First backup](docs/TELEGRAM_SETUP.md#6-first-backup) and worker logs: `docker compose logs -f celery-worker-archive-1`.
+
+## Install from .deb (Ubuntu 24.04 amd64)
+
+Download the latest `.deb` from [GitHub Releases](https://github.com/RomFuture/telegram-uploader/releases) (built automatically on tag `v*`, version synced with `pyproject.toml`).
+
+```bash
+sudo dpkg -i telegram-uploader_0.1.0_amd64.deb
+sudo apt -f install
+sudo telegram-uploader --setup
+sudo $EDITOR /etc/telegram-uploader/.env
+telegram-uploader-login   # Client API auth (once)
+telegram-uploader           # docker compose stack + GUI
+```
+
+Config lives at `/etc/telegram-uploader/.env`. Application files: `/opt/telegram-uploader/`. See [PROJECT.md § Packaging](docs/PROJECT.md#packaging) for upgrade steps.
+
+Local build (requires [nfpm](https://nfpm.goreleaser.com/)):
+
+```bash
+./scripts/build_deb.sh
+```
 
 ### `telegram-bot-api` fails to start
 
@@ -117,10 +139,9 @@ docker compose logs -f celery-worker-archive-1
 
 | File | Contents |
 |------|----------|
-| [docs/PROJECT.md](docs/PROJECT.md) | Overview, packaging/CD |
+| [docs/PROJECT.md](docs/PROJECT.md) | **Architecture, refactor plan, gate/smoke, stack** |
 | [docs/BACKLOG.md](docs/BACKLOG.md) | Open work |
 | [docs/INTERNAL_SPEC.md](docs/INTERNAL_SPEC.md) | Encryption, `display_name`, UI language |
-| [docs/ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md) | Layers and imports |
 | [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | Bot, API keys, group, `.env`, first backup |
 | [docs/TELEGRAM_CLIENT_API_MIGRATION.md](docs/TELEGRAM_CLIENT_API_MIGRATION.md) | Bot API → Client API |
 
@@ -153,9 +174,10 @@ Today you create the bot, API app, group, and `.env` by hand ([TELEGRAM_SETUP.md
 
 | Task | State |
 |------|-------|
-| CD pipeline: `.deb` on release tag | Open |
-| Safe upgrade order (stop workers → migrate → image → start) | Open ([spec](docs/PROJECT.md)) |
-| Version lock: deb = `pyproject.toml` = image tag = migrations | Open |
+| CD pipeline: `.deb` on release tag | Done ([`.github/workflows/release.yml`](.github/workflows/release.yml)) |
+| `packaging/` + `telegram-uploader` launcher | Done |
+| Safe upgrade order (stop workers → migrate → image → start) | Documented ([PROJECT.md](docs/PROJECT.md#packaging)) |
+| Version lock: deb = `pyproject.toml` = tag `v*` | Done (`scripts/check_release_version.sh`) |
 
 ### P0 Architecture cleanup
 
@@ -207,8 +229,7 @@ Work order: `use_cases` → `infrastructure` → `application`.
 
 | Task | State |
 |------|-------|
-| [ONION_ARCHITECTURE.md](docs/ONION_ARCHITECTURE.md): Client API in stack | Open |
-| [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md): archive or trim | Open |
+| [PROJECT.md](docs/PROJECT.md): sync with code after R5–R8 | Open |
 
 ### After v1
 

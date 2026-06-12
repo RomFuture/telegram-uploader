@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      skip_tag_check:
+        description: "Skip tag vs pyproject version check (manual rebuild)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches pyproject version
+        if: github.event_name == 'push' || inputs.skip_tag_check != 'true'
+        run: ./scripts/check_release_version.sh
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check src tests
+
+      - name: Import linter
+        run: lint-imports
+
+      - name: Mypy
+        run: mypy src
+
+      - name: Pytest (unit)
+        run: pytest -m "not integration" -v
+
+  build-deb:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches pyproject version
+        if: github.event_name == 'push' || inputs.skip_tag_check != 'true'
+        run: ./scripts/check_release_version.sh
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION="$(python3 -c "import re, pathlib; t=pathlib.Path('pyproject.toml').read_text(); print(re.search(r'^version\s*=\s*\"([^\"]+)\"', t, re.M).group(1))")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install nfpm
+        run: |
+          curl -sSL -o /tmp/nfpm.deb "https://github.com/goreleaser/nfpm/releases/download/v2.41.1/nfpm_2.41.1_amd64.deb"
+          sudo dpkg -i /tmp/nfpm.deb
+
+      - name: Install gettext (envsubst)
+        run: sudo apt-get update && sudo apt-get install -y gettext-base
+
+      - name: Build .deb
+        run: ./scripts/build_deb.sh "${{ steps.version.outputs.version }}"
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-uploader-deb
+          path: dist/telegram-uploader_*.deb
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build-deb
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION="$(python3 -c "import re, pathlib; t=pathlib.Path('pyproject.toml').read_text(); print(re.search(r'^version\s*=\s*\"([^\"]+)\"', t, re.M).group(1))")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download deb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: telegram-uploader-deb
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: dist/telegram-uploader_*.deb
+          generate_release_notes: true
+          body: |
+            ## Install (Ubuntu 24.04 amd64)
+
+            ```bash
+            sudo dpkg -i telegram-uploader_${{ steps.version.outputs.version }}_amd64.deb
+            sudo apt -f install
+            sudo telegram-uploader --setup
+            sudo $EDITOR /etc/telegram-uploader/.env
+            telegram-uploader-login   # Client API auth (once)
+            telegram-uploader         # start stack + GUI
+            ```
+
+            Requires Docker and docker compose plugin. See README for upgrade notes.

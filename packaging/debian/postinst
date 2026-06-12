@@ -1,0 +1,25 @@
+#!/bin/sh
+set -e
+
+INSTALL_ROOT="/opt/telegram-uploader"
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "telegram-uploader: python3 is required but not installed." >&2
+  exit 1
+fi
+
+python3 -m venv "${INSTALL_ROOT}/.venv"
+"${INSTALL_ROOT}/.venv/bin/pip" install --no-cache-dir --upgrade pip
+"${INSTALL_ROOT}/.venv/bin/pip" install --no-cache-dir "${INSTALL_ROOT}"
+
+if [ ! -f /etc/telegram-uploader/.env ] && [ -f /etc/telegram-uploader/env.example ]; then
+  echo ""
+  echo "telegram-uploader installed."
+  echo "  sudo telegram-uploader --setup"
+  echo "  sudo \$EDITOR /etc/telegram-uploader/.env"
+  echo "  telegram-uploader-login   # Client API auth (once)"
+  echo "  telegram-uploader         # start stack + GUI"
+  echo ""
+fi
+
+exit 0

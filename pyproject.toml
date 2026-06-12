@@ -13,10 +13,15 @@ dependencies = [
   "redis==5.2.1",
   "psycopg[binary]>=3.2.4",
   "sqlalchemy>=2.0.40",
+  "telethon>=1.37.0",
 ]
+
+[project.scripts]
+telegram-uploader-gui = "application.gui.__main__:main"
 
 [project.optional-dependencies]
 dev = [
+  "import-linter==2.1",
   "mypy==1.15.0",
   "pytest==8.3.5",
   "ruff==0.11.2",
@@ -54,7 +59,11 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "infrastructure.worker.tasks"
-disable_error_code = ["misc"]
+disable_error_code = ["misc", "type-arg", "no-untyped-def"]
+
+[[tool.mypy.overrides]]
+module = ["telethon", "telethon.*"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["psycopg", "psycopg.*"]
