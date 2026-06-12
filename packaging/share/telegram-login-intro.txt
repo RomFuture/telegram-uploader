@@ -14,7 +14,7 @@ Your data stays on this computer:
 Before sign-in:
   1. Open the app → Settings → fill API ID, API hash (my.telegram.org), group ID
   2. Click Save (writes ~/.config/telegram-uploader/.env)
-  3. Run this login step once
+  3. Settings → Client API → Sign in to Telegram… (or run telegram-uploader-login)
 
 You may be asked for:
   • Phone number (international format, e.g. +79001234567)

@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from os import environ, getenv
 from pathlib import Path
 
+from infrastructure.paths import default_cache_dir, default_session_path
+
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
@@ -65,12 +67,9 @@ def load_config() -> AppConfig:
     redis_db = getenv("REDIS_DB", "0")
 
     raw_key = getenv("ARCHIVE_ENCRYPTION_KEY", "").strip()
-    raw_cache_dir = getenv("ARCHIVE_CACHE_DIR", "/tmp/telegram_uploader").strip()
+    raw_cache_dir = getenv("ARCHIVE_CACHE_DIR", str(default_cache_dir())).strip()
     raw_api_id = getenv("TELEGRAM_API_ID", "").strip()
-    raw_session_path = getenv(
-        "TELEGRAM_SESSION_PATH",
-        "/tmp/telegram_uploader/session.session",
-    ).strip()
+    raw_session_path = getenv("TELEGRAM_SESSION_PATH", str(default_session_path())).strip()
     return AppConfig(
         app_env=getenv("APP_ENV", "development"),
         app_log_level=getenv("APP_LOG_LEVEL", "INFO"),

@@ -12,7 +12,7 @@ x-docker-runtime-env: &docker-runtime-env
 x-worker-volumes: &worker-volumes
   - ${HOST_SOURCE_MOUNT:-${HOME}}:${HOST_SOURCE_MOUNT:-${HOME}}:ro
   - archive-cache:/data/archive-cache
-  - ${TELEGRAM_SESSION_DIR:-/tmp/telegram_uploader}:/data/telegram:rw
+  - ${TELEGRAM_SESSION_DIR:-${HOME}/.config/telegram-uploader}:/data/telegram:rw
   - ./src:/app/src:ro
 
 services:

@@ -125,7 +125,7 @@ class SettingsDialog(tk.Toplevel):
         ttk.Button(
             test_row,
             text="Sign in to Telegram…",
-            command=lambda: show_login_instructions(self),
+            command=lambda: show_login_instructions(self, self._current_values()),
         ).pack(side="left")
         row += 1
 

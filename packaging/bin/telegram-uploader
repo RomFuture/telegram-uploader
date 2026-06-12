@@ -9,7 +9,6 @@ source "${SCRIPT_DIR}/env-path.sh"
 
 VENV_PYTHON="${INSTALL_ROOT}/.venv/bin/python"
 COMPOSE_FILE="${INSTALL_ROOT}/docker-compose.yml"
-LOGIN_SCRIPT="${INSTALL_ROOT}/scripts/telegram_client_spike.py"
 
 case "${1:-}" in
   --setup)
@@ -72,7 +71,7 @@ docker compose -f "$COMPOSE_FILE" restart \
   celery-worker-cleanup \
   celery-worker-restore
 
-session_path="${TELEGRAM_SESSION_PATH:-/tmp/telegram_uploader/session.session}"
+session_path="${TELEGRAM_SESSION_PATH:-${HOME}/.config/telegram-uploader/session.session}"
 session_dir="${TELEGRAM_SESSION_DIR:-$(dirname "$session_path")}"
 mkdir -p "$session_dir"
 if [[ "${TELEGRAM_PROVIDER:-client}" == "client" && ! -f "$session_path" ]]; then

@@ -8,72 +8,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/env-path.sh"
 
 VENV_PYTHON="${INSTALL_ROOT}/.venv/bin/python"
-LOGIN_SCRIPT="${INSTALL_ROOT}/scripts/telegram_client_spike.py"
-INTRO_FILE="/usr/share/telegram-uploader/telegram-login-intro.txt"
-
-show_intro() {
-  if [ -f "$INTRO_FILE" ]; then
-    cat "$INTRO_FILE"
-  else
-    cat <<'EOF'
-Telegram Uploader — one-time sign-in
-
-Your Telegram account (not a bot) uploads backups to your private group.
-Credentials stay on this computer; we do not share them with third parties.
-
-Configure API ID, hash, and group ID in the app Settings → Save first.
-EOF
-  fi
-  echo ""
-  read -r -p "Continue with Telegram sign-in? [Y/n] " answer
-  case "${answer:-Y}" in
-    [Yy]|"") ;;
-    *) echo "Cancelled."; exit 0 ;;
-  esac
-  echo ""
-}
-
-is_placeholder() {
-  local value="${1:-}"
-  case "$value" in
-    "" | change_me | your_api_hash_here | change_me_or_leave_empty_for_auto) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-validate_config() {
-  local errors=()
-  if is_placeholder "${TELEGRAM_API_ID:-}" || ! [[ "${TELEGRAM_API_ID:-}" =~ ^[0-9]+$ ]]; then
-    errors+=("TELEGRAM_API_ID missing — open the app → Settings → Client API → Save")
-  fi
-  if is_placeholder "${TELEGRAM_API_HASH:-}"; then
-    errors+=("TELEGRAM_API_HASH missing — Settings → Client API → Save")
-  fi
-  if is_placeholder "${TELEGRAM_TARGET_CHAT_ID:-}"; then
-    errors+=("TELEGRAM_TARGET_CHAT_ID missing — Settings → General → Save")
-  fi
-  if ((${#errors[@]} > 0)); then
-    echo "error: cannot sign in yet:" >&2
-    for msg in "${errors[@]}"; do
-      echo "  - $msg" >&2
-    done
-    echo >&2
-    echo "Or edit: ${USER_ENV_FILE:-~/.config/telegram-uploader/.env}" >&2
-    exit 1
-  fi
-}
 
 case "${1:-}" in
   --help|-h)
-    echo "Usage: telegram-uploader-login"
+    echo "Usage: telegram-uploader-login [--no-intro]"
     echo "  One-time Telegram sign-in (phone + code). Run after Settings → Save."
     exit 0
-    ;;
-  --no-intro)
-    shift
-    ;;
-  *)
-    show_intro
     ;;
 esac
 
@@ -84,24 +24,11 @@ ENV_FILE="$(resolve_env_file)" || {
 }
 
 load_env_file "$ENV_FILE"
-validate_config
+export TELEGRAM_UPLOADER_ENV_FILE="$ENV_FILE"
 
 if [[ ! -x "$VENV_PYTHON" ]]; then
   echo "error: ${VENV_PYTHON} not found — reinstall telegram-uploader package." >&2
   exit 1
 fi
 
-if [[ ! -f "$LOGIN_SCRIPT" ]]; then
-  echo "error: ${LOGIN_SCRIPT} not found." >&2
-  exit 1
-fi
-
-session_path="${TELEGRAM_SESSION_PATH:-/tmp/telegram_uploader/session.session}"
-session_dir="${TELEGRAM_SESSION_DIR:-$(dirname "$session_path")}"
-mkdir -p "$session_dir"
-
-echo "Connecting to Telegram…"
-echo "Enter phone number and code when asked (data goes to Telegram only)."
-echo ""
-
-exec "$VENV_PYTHON" "$LOGIN_SCRIPT" --login-only
+exec "$VENV_PYTHON" -m application.telegram_login_cli "$@"

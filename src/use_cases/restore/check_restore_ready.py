@@ -28,9 +28,9 @@ _INCOMPLETE_UPLOAD_MESSAGE = (
 
 _HEALTHCHECK_FAIL_MESSAGE = (
     "Telegram Client API is not ready on this machine.\n\n"
-    "Run scripts/telegram_client_spike.py --login-only, then "
-    "Settings → Client API → Test Client API.\n"
-    "See docs/CLIENT_API_SETUP.md"
+    "Settings → Client API → Sign in to Telegram… (one time),\n"
+    "then Test Client API.\n"
+    "Or in a terminal: telegram-uploader-login"
 )
 
 

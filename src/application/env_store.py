@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from application.settings_values import SettingsValues
+from infrastructure.paths import default_session_path
 
 _ENV_KEYS = (
     "TELEGRAM_PROVIDER",
@@ -31,7 +32,7 @@ def _session_dir_from_path(session_path: str) -> str:
 
 
 def settings_to_env_updates(values: SettingsValues) -> dict[str, str]:
-    session_path = values.telegram_session_path.strip() or "/tmp/telegram_uploader/session.session"
+    session_path = values.telegram_session_path.strip() or str(default_session_path())
     updates: dict[str, str] = {
         "TELEGRAM_PROVIDER": values.telegram_provider.strip() or "client",
         "TELEGRAM_API_ID": values.telegram_api_id.strip(),
