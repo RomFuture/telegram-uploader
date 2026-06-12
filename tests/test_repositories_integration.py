@@ -6,7 +6,7 @@ import pytest
 
 from infrastructure.db.migrate import apply_migrations
 from infrastructure.db.sqlalchemy_repositories import SqlAlchemyRepositories
-from use_cases.persistence import SessionRecord
+from use_cases.shared.persistence import SessionRecord
 
 
 @pytest.fixture

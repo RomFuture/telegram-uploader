@@ -1,14 +1,14 @@
 from pathlib import Path
 from uuid import UUID
 
-from use_cases.dto import (
+from use_cases.shared.dto import (
     ClassifiedProviderError,
     ProviderErrorCategory,
     ProviderFileInfo,
     ProviderLimits,
     UploadResult,
 )
-from use_cases.ports.archive_service import ArchiveServiceResult, ArchiveVolumePart
+from use_cases.shared.ports.archive_service import ArchiveServiceResult, ArchiveVolumePart
 
 
 class FakeTaskQueue:
@@ -58,6 +58,12 @@ class FakeArchiveService:
             manifest_path=manifest_path,
             encryption_key_used=encryption_key or "generated-key",
         )
+
+    def extract(self, volume_paths: list[Path], dest_dir: Path, encryption_key: str) -> Path:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        extracted = dest_dir / "restored.bin"
+        extracted.write_bytes(b"restored-content")
+        return extracted
 
 
 class FakeStorageProvider:

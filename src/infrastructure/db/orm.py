@@ -26,6 +26,10 @@ class SourceItemRow(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     session_id: Mapped[UUID] = mapped_column(ForeignKey("upload_sessions.id", ondelete="CASCADE"))
+    folder_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("backup_folders.id"),
+        nullable=True,
+    )
     source_path: Mapped[str] = mapped_column(Text, nullable=False)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
@@ -52,3 +56,12 @@ class ArchiveVolumeRow(Base):
     created_at: Mapped[datetime] = mapped_column(nullable=False)
 
     source_item: Mapped[SourceItemRow] = relationship(back_populates="archive_volumes")
+
+
+class BackupFolderRow(Base):
+    __tablename__ = "backup_folders"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    session_id: Mapped[UUID] = mapped_column(ForeignKey("upload_sessions.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)

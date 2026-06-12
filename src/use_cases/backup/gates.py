@@ -1,7 +1,7 @@
 """Backup pipeline preconditions — which status a step requires before it runs."""
 
 import domain as domain
-from use_cases.types import ArchiveVolume, Session, SourceItem
+from use_cases.shared.types import ArchiveVolume, Session, SourceItem
 
 
 def require_session_running(session: Session) -> None:

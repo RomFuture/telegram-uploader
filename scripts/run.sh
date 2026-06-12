@@ -36,30 +36,44 @@ is_placeholder() {
 
 validate_telegram_setup() {
   local errors=()
+  local provider="${TELEGRAM_PROVIDER:-client}"
 
-  if is_placeholder "${TELEGRAM_API_ID:-}" || ! [[ "${TELEGRAM_API_ID:-}" =~ ^[0-9]+$ ]]; then
-    errors+=("TELEGRAM_API_ID must be a numeric api_id from https://my.telegram.org")
-  fi
-  if is_placeholder "${TELEGRAM_API_HASH:-}"; then
-    errors+=("TELEGRAM_API_HASH must be your api_hash from https://my.telegram.org")
-  fi
-  if is_placeholder "${TELEGRAM_BOT_TOKEN:-}"; then
-    errors+=("TELEGRAM_BOT_TOKEN must be the bot token from @BotFather")
-  fi
   if is_placeholder "${TELEGRAM_TARGET_CHAT_ID:-}"; then
     errors+=("TELEGRAM_TARGET_CHAT_ID must be the numeric id of your backup group")
+  fi
+
+  if [[ "$provider" == "client" ]]; then
+    if is_placeholder "${TELEGRAM_API_ID:-}" || ! [[ "${TELEGRAM_API_ID:-}" =~ ^[0-9]+$ ]]; then
+      errors+=("TELEGRAM_API_ID must be a numeric api_id from https://my.telegram.org")
+    fi
+    if is_placeholder "${TELEGRAM_API_HASH:-}"; then
+      errors+=("TELEGRAM_API_HASH must be your api_hash from https://my.telegram.org")
+    fi
+  else
+    if is_placeholder "${TELEGRAM_API_ID:-}" || ! [[ "${TELEGRAM_API_ID:-}" =~ ^[0-9]+$ ]]; then
+      errors+=("TELEGRAM_API_ID must be a numeric api_id from https://my.telegram.org")
+    fi
+    if is_placeholder "${TELEGRAM_API_HASH:-}"; then
+      errors+=("TELEGRAM_API_HASH must be your api_hash from https://my.telegram.org")
+    fi
+    if is_placeholder "${TELEGRAM_BOT_TOKEN:-}"; then
+      errors+=("TELEGRAM_BOT_TOKEN must be the bot token from @BotFather (or set TELEGRAM_PROVIDER=client)")
+    fi
   fi
 
   if ((${#errors[@]} == 0)); then
     return 0
   fi
 
-  echo "error: telegram-bot-api and backup need real Telegram credentials in .env:" >&2
+  echo "error: Telegram credentials missing or invalid in .env:" >&2
   for msg in "${errors[@]}"; do
     echo "  - $msg" >&2
   done
   echo >&2
   echo "Setup guide: docs/TELEGRAM_SETUP.md" >&2
+  if [[ "${TELEGRAM_PROVIDER:-client}" == "client" ]]; then
+    echo "Client API auth (once): PYTHONPATH=src .venv/bin/python scripts/telegram_client_spike.py --login-only" >&2
+  fi
   exit 1
 }
 
@@ -79,6 +93,15 @@ docker compose restart \
   celery-worker-cleanup \
   celery-worker-restore
 
+session_path="${TELEGRAM_SESSION_PATH:-/tmp/telegram_uploader/session.session}"
+session_dir="${TELEGRAM_SESSION_DIR:-$(dirname "$session_path")}"
+mkdir -p "$session_dir"
+if [[ "${TELEGRAM_PROVIDER:-client}" == "client" && ! -f "$session_path" ]]; then
+  echo "warning: Client API session not found at $session_path" >&2
+  echo "  Run: PYTHONPATH=src .venv/bin/python scripts/telegram_client_spike.py --login-only" >&2
+  echo "  Workers share this file via TELEGRAM_SESSION_DIR=$session_dir (see .env)" >&2
+fi
+
 PYTHON="${ROOT}/.venv/bin/python"
 if [[ ! -x "$PYTHON" ]]; then
   echo "error: ${PYTHON} not found — create .venv and run: pip install -e '.[dev]'" >&2
@@ -86,4 +109,9 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 
 export PYTHONPATH="${ROOT}/src"
+echo "Applying database migrations..."
+"$PYTHON" -c "from infrastructure.config import load_config; from infrastructure.db.migrate import apply_migrations; apply_migrations(load_config().postgres_dsn)"
+echo "Starting GUI (Unlock → folders → backup/restore)..."
+echo "Client API default. Authenticate once:"
+echo "  PYTHONPATH=src .venv/bin/python scripts/telegram_client_spike.py --login-only"
 exec "$PYTHON" -m application.gui

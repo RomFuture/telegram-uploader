@@ -9,12 +9,12 @@ from infrastructure.db.mappers import (
 )
 from infrastructure.db.orm import ArchiveVolumeRow, SourceItemRow, UploadSessionRow
 from infrastructure.db.sqlalchemy_repositories import SqlAlchemyRepositories
-from use_cases.mappers import (
+from use_cases.shared.mappers import (
     archive_volume_record_to_domain,
     session_record_to_domain,
     source_item_record_to_domain,
 )
-from use_cases.repositories.session import SessionRepository
+from use_cases.shared.repositories.session import SessionRepository
 
 
 def test_repositories_bundle_from_dsn() -> None:

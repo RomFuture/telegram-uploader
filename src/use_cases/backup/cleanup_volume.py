@@ -3,9 +3,9 @@ from uuid import UUID
 
 import domain as domain
 from use_cases.backup.idempotency import CleanupStepAction, decide_cleanup_on_retry
-from use_cases.mappers import domain_to_source_item_record
-from use_cases.repositories.archive_volume import ArchiveVolumeRepository
-from use_cases.repositories.source_item import SourceItemRepository
+from use_cases.shared.mappers import merge_source_item_record
+from use_cases.shared.repositories.archive_volume import ArchiveVolumeRepository
+from use_cases.shared.repositories.source_item import SourceItemRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,4 +27,5 @@ class CleanupVolumeUseCase:
         all_cleaned = all(not remaining.local_path.exists() for remaining in remaining_volumes)
         if all_cleaned and domain.is_source_item(item, status=domain.SourceItemStatus.CLEANUP):
             completed = domain.mark_source_item(item, status=domain.SourceItemStatus.COMPLETED)
-            self.source_items.update(domain_to_source_item_record(completed))
+            existing = self.source_items.get(item.id)
+            self.source_items.update(merge_source_item_record(existing, completed))

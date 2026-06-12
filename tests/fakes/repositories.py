@@ -1,8 +1,13 @@
 from copy import deepcopy
 from uuid import UUID
 
-from use_cases.persistence import ArchiveVolumeRecord, SessionRecord, SourceItemRecord
-from use_cases.repositories.loading import (
+from use_cases.shared.persistence import (
+    ArchiveVolumeRecord,
+    BackupFolderRecord,
+    SessionRecord,
+    SourceItemRecord,
+)
+from use_cases.shared.repositories.loading import (
     map_archive_volumes,
     map_source_items,
     require_archive_volume_record,
@@ -10,7 +15,7 @@ from use_cases.repositories.loading import (
     require_session_record,
     require_source_item_record,
 )
-from use_cases.types import ArchiveVolume, Session, SourceItem
+from use_cases.shared.types import ArchiveVolume, Session, SourceItem
 
 
 class InMemorySessionRepository:
@@ -29,6 +34,39 @@ class InMemorySessionRepository:
 
     def update(self, record: SessionRecord) -> None:
         self._records[record.id] = deepcopy(record)
+
+    def list_profiles(self) -> tuple[str, ...]:
+        names = sorted({record.profile_name for record in self._records.values()})
+        return tuple(names)
+
+    def find_by_profile_name(self, profile_name: str) -> SessionRecord | None:
+        for record in self._records.values():
+            if record.profile_name == profile_name:
+                return deepcopy(record)
+        return None
+
+
+class InMemoryFolderRepository:
+    def __init__(self) -> None:
+        self._records: dict[UUID, BackupFolderRecord] = {}
+
+    def add(self, record: BackupFolderRecord) -> None:
+        self._records[record.id] = deepcopy(record)
+
+    def get(self, folder_id: UUID) -> BackupFolderRecord | None:
+        record = self._records.get(folder_id)
+        return deepcopy(record) if record is not None else None
+
+    def list_by_session(self, session_id: UUID) -> list[BackupFolderRecord]:
+        records = [record for record in self._records.values() if record.session_id == session_id]
+        records.sort(key=lambda item: item.name.lower())
+        return [deepcopy(record) for record in records]
+
+    def find_by_name(self, session_id: UUID, name: str) -> BackupFolderRecord | None:
+        for record in self._records.values():
+            if record.session_id == session_id and record.name == name:
+                return deepcopy(record)
+        return None
 
 
 class InMemorySourceItemRepository:
@@ -55,6 +93,9 @@ class InMemorySourceItemRepository:
 
     def update(self, record: SourceItemRecord) -> None:
         self._records[record.id] = deepcopy(record)
+
+    def delete(self, source_item_id: UUID) -> None:
+        self._records.pop(source_item_id, None)
 
 
 class InMemoryArchiveVolumeRepository:
@@ -100,6 +141,9 @@ class InMemoryArchiveVolumeRepository:
     def update(self, record: ArchiveVolumeRecord) -> None:
         self._records[record.id] = deepcopy(record)
 
+    def delete(self, volume_id: UUID) -> None:
+        self._records.pop(volume_id, None)
+
     def bind_source_items(self, source_items: InMemorySourceItemRepository) -> None:
         self._source_items = source_items
 
@@ -107,6 +151,7 @@ class InMemoryArchiveVolumeRepository:
 class InMemoryRepositories:
     def __init__(self) -> None:
         self.sessions = InMemorySessionRepository()
+        self.folders = InMemoryFolderRepository()
         self.source_items = InMemorySourceItemRepository()
         self.archive_volumes = InMemoryArchiveVolumeRepository()
         self.archive_volumes.bind_source_items(self.source_items)

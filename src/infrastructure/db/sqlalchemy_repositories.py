@@ -10,15 +10,22 @@ from sqlalchemy.orm import Session as DbSession
 from infrastructure.db.engine import build_db_session_factory, db_session_scope
 from infrastructure.db.mappers import (
     archive_volume_row_to_record,
+    backup_folder_row_to_record,
     record_to_archive_volume_row,
+    record_to_backup_folder_row,
     record_to_source_item_row,
     record_to_upload_session_row,
     source_item_row_to_record,
     upload_session_row_to_record,
 )
-from infrastructure.db.orm import ArchiveVolumeRow, SourceItemRow, UploadSessionRow
-from use_cases.persistence import ArchiveVolumeRecord, SessionRecord, SourceItemRecord
-from use_cases.repositories.loading import (
+from infrastructure.db.orm import ArchiveVolumeRow, BackupFolderRow, SourceItemRow, UploadSessionRow
+from use_cases.shared.persistence import (
+    ArchiveVolumeRecord,
+    BackupFolderRecord,
+    SessionRecord,
+    SourceItemRecord,
+)
+from use_cases.shared.repositories.loading import (
     map_archive_volumes,
     map_source_items,
     require_archive_volume_record,
@@ -26,7 +33,7 @@ from use_cases.repositories.loading import (
     require_session_record,
     require_source_item_record,
 )
-from use_cases.types import ArchiveVolume, Session, SourceItem
+from use_cases.shared.types import ArchiveVolume, Session, SourceItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +57,59 @@ class SqlAlchemySessionRepository:
     def update(self, record: SessionRecord) -> None:
         with db_session_scope(self.db_session_factory) as db:
             db.merge(record_to_upload_session_row(record))
+
+    def list_profiles(self) -> tuple[str, ...]:
+        with db_session_scope(self.db_session_factory) as db:
+            rows = db.scalars(
+                select(UploadSessionRow.profile_name).order_by(UploadSessionRow.created_at.desc())
+            ).all()
+        return tuple(dict.fromkeys(rows))
+
+    def find_by_profile_name(self, profile_name: str) -> SessionRecord | None:
+        with db_session_scope(self.db_session_factory) as db:
+            row = db.scalars(
+                select(UploadSessionRow).where(UploadSessionRow.profile_name == profile_name)
+            ).first()
+            if row is None:
+                return None
+            return upload_session_row_to_record(row)
+
+
+@dataclass(frozen=True, slots=True)
+class SqlAlchemyFolderRepository:
+    db_session_factory: Callable[[], DbSession]
+
+    def add(self, record: BackupFolderRecord) -> None:
+        with db_session_scope(self.db_session_factory) as db:
+            db.add(record_to_backup_folder_row(record))
+
+    def get(self, folder_id: UUID) -> BackupFolderRecord | None:
+        with db_session_scope(self.db_session_factory) as db:
+            row = db.get(BackupFolderRow, folder_id)
+            if row is None:
+                return None
+            return backup_folder_row_to_record(row)
+
+    def list_by_session(self, session_id: UUID) -> list[BackupFolderRecord]:
+        with db_session_scope(self.db_session_factory) as db:
+            rows = db.scalars(
+                select(BackupFolderRow)
+                .where(BackupFolderRow.session_id == session_id)
+                .order_by(BackupFolderRow.name)
+            ).all()
+            return [backup_folder_row_to_record(row) for row in rows]
+
+    def find_by_name(self, session_id: UUID, name: str) -> BackupFolderRecord | None:
+        with db_session_scope(self.db_session_factory) as db:
+            row = db.scalars(
+                select(BackupFolderRow).where(
+                    BackupFolderRow.session_id == session_id,
+                    BackupFolderRow.name == name,
+                )
+            ).first()
+            if row is None:
+                return None
+            return backup_folder_row_to_record(row)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +145,12 @@ class SqlAlchemySourceItemRepository:
     def update(self, record: SourceItemRecord) -> None:
         with db_session_scope(self.db_session_factory) as db:
             db.merge(record_to_source_item_row(record))
+
+    def delete(self, source_item_id: UUID) -> None:
+        with db_session_scope(self.db_session_factory) as db:
+            row = db.get(SourceItemRow, source_item_id)
+            if row is not None:
+                db.delete(row)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,10 +200,17 @@ class SqlAlchemyArchiveVolumeRepository:
         with db_session_scope(self.db_session_factory) as db:
             db.merge(record_to_archive_volume_row(record))
 
+    def delete(self, volume_id: UUID) -> None:
+        with db_session_scope(self.db_session_factory) as db:
+            row = db.get(ArchiveVolumeRow, volume_id)
+            if row is not None:
+                db.delete(row)
+
 
 @dataclass(frozen=True, slots=True)
 class SqlAlchemyRepositories:
     sessions: SqlAlchemySessionRepository
+    folders: SqlAlchemyFolderRepository
     source_items: SqlAlchemySourceItemRepository
     archive_volumes: SqlAlchemyArchiveVolumeRepository
 
@@ -146,6 +219,7 @@ class SqlAlchemyRepositories:
         db_session_factory = build_db_session_factory(postgres_dsn)
         return cls(
             sessions=SqlAlchemySessionRepository(db_session_factory),
+            folders=SqlAlchemyFolderRepository(db_session_factory),
             source_items=SqlAlchemySourceItemRepository(db_session_factory),
             archive_volumes=SqlAlchemyArchiveVolumeRepository(db_session_factory),
         )

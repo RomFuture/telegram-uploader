@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import domain as domain
-from use_cases.mappers import domain_to_archive_volume_record, domain_to_source_item_record
-from use_cases.repositories.archive_volume import ArchiveVolumeRepository
-from use_cases.repositories.source_item import SourceItemRepository
-from use_cases.types import SourceItem
+from use_cases.shared.mappers import domain_to_archive_volume_record, merge_source_item_record
+from use_cases.shared.repositories.archive_volume import ArchiveVolumeRepository
+from use_cases.shared.repositories.source_item import SourceItemRepository
+from use_cases.shared.types import SourceItem
 
 
 def _mark_source_item_failed_if_active(item: SourceItem) -> SourceItem | None:
@@ -32,7 +32,8 @@ class ReportArchiveFailureUseCase:
         item = self.source_items.require(source_item_id)
         failed = _mark_source_item_failed_if_active(item)
         if failed is not None:
-            self.source_items.update(domain_to_source_item_record(failed))
+            existing = self.source_items.get(item.id)
+            self.source_items.update(merge_source_item_record(existing, failed))
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +53,8 @@ class ReportUploadFailureUseCase:
         if domain.is_source_item(item, status=domain.SourceItemStatus.UPLOADING):
             failed_item = _mark_source_item_failed_if_active(item)
             if failed_item is not None:
-                self.source_items.update(domain_to_source_item_record(failed_item))
+                existing = self.source_items.get(item.id)
+                self.source_items.update(merge_source_item_record(existing, failed_item))
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,4 +67,5 @@ class ReportCleanupFailureUseCase:
             return
         failed = _mark_source_item_failed_if_active(item)
         if failed is not None:
-            self.source_items.update(domain_to_source_item_record(failed))
+            existing = self.source_items.get(item.id)
+            self.source_items.update(merge_source_item_record(existing, failed))

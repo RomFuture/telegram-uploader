@@ -67,6 +67,58 @@ class DomainError(Exception):
         )
 
     @classmethod
+    def session_not_found_by_profile(cls, profile_name: str) -> "DomainError":
+        return cls(
+            code="session_not_found",
+            message=f"Database not found: {profile_name}",
+            entity="Session",
+            reason=profile_name,
+        )
+
+    @classmethod
+    def wrong_encryption_key(cls, profile_name: str) -> "DomainError":
+        return cls(
+            code="wrong_encryption_key",
+            message="Wrong encryption key",
+            entity="Session",
+            reason=profile_name,
+        )
+
+    @classmethod
+    def profile_already_exists(cls, profile_name: str) -> "DomainError":
+        return cls(
+            code="profile_already_exists",
+            message=f"Database already exists: {profile_name}",
+            entity="Session",
+            reason=profile_name,
+        )
+
+    @classmethod
+    def no_restorable_backups(cls, session_id: UUID) -> "DomainError":
+        return cls(
+            code="no_restorable_backups",
+            message=(
+                "No completed backups to restore. "
+                "Click Start Backup to retry unfinished uploads."
+            ),
+            entity="Session",
+            entity_id=session_id,
+            reason="no_restorable_backups",
+        )
+
+    @classmethod
+    def legacy_volumes(cls) -> "DomainError":
+        return cls(
+            code="legacy_volumes",
+            message=(
+                "Restore requires Client API backups. "
+                "Re-backup your files with TELEGRAM_PROVIDER=client."
+            ),
+            entity="ArchiveVolume",
+            reason="legacy_bot_api",
+        )
+
+    @classmethod
     def invalid_status_transition(
         cls,
         entity: str,

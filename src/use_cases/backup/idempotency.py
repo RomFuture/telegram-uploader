@@ -7,7 +7,7 @@ Lives in use_cases — not domain — because it is execution policy, not core s
 from enum import Enum
 
 import domain as domain
-from use_cases.types import ArchiveVolume, SourceItem
+from use_cases.shared.types import ArchiveVolume, SourceItem
 
 
 class ArchiveStepAction(str, Enum):

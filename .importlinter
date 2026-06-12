@@ -1,0 +1,58 @@
+[importlinter]
+root_packages =
+    domain
+    use_cases
+    infrastructure
+    application
+include_external_packages = True
+
+[importlinter:contract:domain-isolated]
+name = Domain isolated from outer layers
+type = forbidden
+source_modules =
+    domain
+forbidden_modules =
+    use_cases
+    infrastructure
+    application
+
+[importlinter:contract:use-cases-isolated]
+name = Use cases isolated from adapters
+type = forbidden
+source_modules =
+    use_cases
+forbidden_modules =
+    infrastructure
+    application
+    sqlalchemy
+    celery
+    redis
+    psycopg
+
+[importlinter:contract:infrastructure-no-domain]
+name = Infrastructure does not import domain or application
+type = forbidden
+source_modules =
+    infrastructure
+forbidden_modules =
+    domain
+    application
+allow_indirect_imports = True
+
+[importlinter:contract:application-public-api]
+name = Application imports only use_cases public surface
+type = forbidden
+source_modules =
+    application
+forbidden_modules =
+    domain
+    infrastructure
+    use_cases.backup
+    use_cases.session
+    use_cases.restore
+    use_cases.shared
+allow_indirect_imports = True
+ignore_imports =
+    application.gui.__main__ -> infrastructure.bootstrap
+    application.gui.__main__ -> infrastructure.config
+    application.gui.__main__ -> infrastructure.db.migrate

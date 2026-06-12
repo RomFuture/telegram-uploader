@@ -67,8 +67,7 @@ jobs:
       - name: Read version
         id: version
         run: |
-          VERSION="$(python3 -c "import re, pathlib; t=pathlib.Path('pyproject.toml').read_text(); print(re.search(r'^version\s*=\s*\"([^\"]+)\"', t, re.M).group(1))")
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=$(./scripts/read_version.sh)" >> "$GITHUB_OUTPUT"
 
       - name: Install nfpm
         run: |
@@ -100,7 +99,7 @@ jobs:
       - name: Read version
         id: version
         run: |
-          VERSION="$(python3 -c "import re, pathlib; t=pathlib.Path('pyproject.toml').read_text(); print(re.search(r'^version\s*=\s*\"([^\"]+)\"', t, re.M).group(1))")
+          VERSION="$(./scripts/read_version.sh)"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 

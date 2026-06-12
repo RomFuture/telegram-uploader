@@ -107,6 +107,35 @@ class SevenZipService:
             encryption_key_used=key,
         )
 
+    def extract(self, volume_paths: list[Path], dest_dir: Path, encryption_key: str) -> Path:
+        """Decrypt and extract split archive volumes into dest_dir."""
+        if not volume_paths:
+            raise SevenZipError("no archive volumes to extract")
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        existing_files = {path for path in dest_dir.iterdir() if path.is_file()}
+        first_volume = volume_paths[0]
+        command = [
+            self.executable,
+            "x",
+            f"-p{encryption_key}",
+            f"-o{dest_dir}",
+            str(first_volume),
+            "-y",
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or "").strip() or str(exc)
+            raise SevenZipError(f"7z extract failed: {detail}") from exc
+
+        new_files = {path for path in dest_dir.iterdir() if path.is_file()} - existing_files
+        if len(new_files) != 1:
+            raise SevenZipError(
+                f"expected one new file in {dest_dir}, found {len(new_files)}"
+            )
+        return new_files.pop()
+
     def _run_7z(self, source_path: Path, archive_path: Path, encryption_key: str) -> None:
         command = [
             self.executable,

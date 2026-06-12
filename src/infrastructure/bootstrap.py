@@ -1,7 +1,8 @@
-"""Composition root: config, migrations, health checks, facade wiring."""
+"""Composition root: config, migrations, health checks, API wiring."""
 
 import logging
 import sys
+from pathlib import Path
 from typing import cast
 
 import redis
@@ -10,37 +11,126 @@ from infrastructure.archive import ArchiveServiceAdapter, SevenZipService
 from infrastructure.config import AppConfig, load_config
 from infrastructure.db.migrate import apply_migrations
 from infrastructure.db.sqlalchemy_repositories import SqlAlchemyRepositories
-from infrastructure.facade import BackupFacade
-from infrastructure.providers import TelegramProviderV1
+from infrastructure.providers import TelegramClientProvider, TelegramProviderV1
 from infrastructure.worker.celery_task_queue import CeleryTaskQueue
 from use_cases.backup.cleanup_volume import CleanupVolumeUseCase
 from use_cases.backup.enqueue_source_item import EnqueueSourceItemUseCase
 from use_cases.backup.process_archive_volume import ProcessArchiveVolumeUseCase
 from use_cases.backup.process_upload_volume import ProcessUploadVolumeUseCase
+from use_cases.backup.report_failure import (
+    ReportArchiveFailureUseCase,
+    ReportCleanupFailureUseCase,
+    ReportUploadFailureUseCase,
+)
 from use_cases.backup.start_backup_pipeline import StartBackupPipelineUseCase
-from use_cases.repositories import Repositories
+from use_cases.public import BackupApi, WorkerApi
+from use_cases.restore.check_restore_ready import CheckRestoreReadyUseCase
 from use_cases.restore.process_restore_volume import ProcessRestoreVolumeUseCase
 from use_cases.restore.restore_session import RestoreSessionUseCase
+from use_cases.session.create_database import CreateDatabaseUseCase
+from use_cases.session.create_folder import CreateFolderUseCase
 from use_cases.session.create_session import CreateSessionUseCase
+from use_cases.session.get_session_progress import GetSessionProgressUseCase
+from use_cases.session.list_folders import ListFoldersUseCase
+from use_cases.session.list_session_profiles import ListSessionProfilesUseCase
+from use_cases.session.manage_source_item import (
+    DeleteSourceItemUseCase,
+    MoveSourceItemUseCase,
+    RenameSourceItemUseCase,
+)
+from use_cases.session.unlock_session import UnlockSessionUseCase
+from use_cases.shared.ports.storage_provider import StorageProviderPort
+from use_cases.shared.repositories import Repositories
+from use_cases.telegram.test_client_api import TestClientApiUseCase
 
 
-def build_facade(cfg: AppConfig) -> BackupFacade:
-    """Wire repositories, ports, and use cases into a single entry point."""
-    repos = cast(Repositories, SqlAlchemyRepositories.from_dsn(cfg.postgres_dsn))
-    provider = TelegramProviderV1(
+def _wire_repositories(cfg: AppConfig) -> Repositories:
+    return cast(Repositories, SqlAlchemyRepositories.from_dsn(cfg.postgres_dsn))
+
+
+def build_storage_provider(cfg: AppConfig) -> StorageProviderPort:
+    if cfg.telegram_provider == "client":
+        if cfg.telegram_api_id is None or not cfg.telegram_api_hash:
+            raise ValueError("TELEGRAM_API_ID and TELEGRAM_API_HASH required for client provider")
+        return TelegramClientProvider(
+            api_id=cfg.telegram_api_id,
+            api_hash=cfg.telegram_api_hash,
+            session_path=cfg.telegram_session_path,
+        )
+    return TelegramProviderV1(
         bot_token=cfg.telegram_bot_token,
         base_url=cfg.telegram_bot_api_url,
     )
-    task_queue = CeleryTaskQueue()
-    archive_service = ArchiveServiceAdapter(service=SevenZipService())
-    remote_target = cfg.telegram_target_chat_id
 
-    return BackupFacade(
-        repos=repos,
+
+def build_client_provider(
+    *,
+    api_id: int,
+    api_hash: str,
+    session_path: Path,
+) -> StorageProviderPort:
+    return TelegramClientProvider(
+        api_id=api_id,
+        api_hash=api_hash,
+        session_path=session_path,
+    )
+
+
+def _client_api_test_file() -> Path:
+    return Path(__file__).resolve().parents[2] / "docs/refactor/README.md"
+
+
+def build_backup_api(cfg: AppConfig) -> BackupApi:
+    """Wire GUI-facing use cases into BackupApi."""
+    repos = _wire_repositories(cfg)
+    task_queue = CeleryTaskQueue()
+    provider = build_storage_provider(cfg)
+    archive_service = ArchiveServiceAdapter(service=SevenZipService())
+    restore_dir = cfg.archive_cache_dir / "restore"
+
+    return BackupApi(
         create_session=CreateSessionUseCase(repos.sessions),
-        enqueue_source_item=EnqueueSourceItemUseCase(repos.source_items, task_queue),
+        create_database_uc=CreateDatabaseUseCase(repos.sessions, repos.folders),
+        unlock_session_uc=UnlockSessionUseCase(repos.sessions),
+        list_session_profiles=ListSessionProfilesUseCase(repos.sessions),
+        list_folders_uc=ListFoldersUseCase(repos.folders),
+        create_folder_uc=CreateFolderUseCase(repos.folders),
+        get_session_progress=GetSessionProgressUseCase(repos.source_items, repos.folders),
+        enqueue_source_item=EnqueueSourceItemUseCase(repos.source_items, repos.folders),
         start_backup_pipeline=StartBackupPipelineUseCase(repos, task_queue),
-        process_archive=ProcessArchiveVolumeUseCase(
+        restore_session_uc=RestoreSessionUseCase(
+            sessions=repos.sessions,
+            archive_volumes=repos.archive_volumes,
+            storage_provider=provider,
+            archive_service=archive_service,
+            staging_dir=restore_dir,
+            target_chat_id=cfg.telegram_target_chat_id,
+        ),
+        check_restore_ready_uc=CheckRestoreReadyUseCase(
+            archive_volumes=repos.archive_volumes,
+            storage_provider=provider,
+            target_chat_id=cfg.telegram_target_chat_id,
+        ),
+        test_client_api_uc=TestClientApiUseCase(test_file_path=_client_api_test_file()),
+        rename_source_item_uc=RenameSourceItemUseCase(repos.source_items),
+        move_source_item_uc=MoveSourceItemUseCase(repos.source_items, repos.folders),
+        delete_source_item_uc=DeleteSourceItemUseCase(
+            repos.source_items,
+            repos.archive_volumes,
+        ),
+    )
+
+
+def build_worker_api(cfg: AppConfig) -> WorkerApi:
+    """Wire worker-facing use cases into WorkerApi."""
+    repos = _wire_repositories(cfg)
+    task_queue = CeleryTaskQueue()
+    provider = build_storage_provider(cfg)
+    archive_service = ArchiveServiceAdapter(service=SevenZipService())
+    restore_dir = cfg.archive_cache_dir / "restore"
+
+    return WorkerApi(
+        process_archive_uc=ProcessArchiveVolumeUseCase(
             sessions=repos.sessions,
             source_items=repos.source_items,
             archive_volumes=repos.archive_volumes,
@@ -48,32 +138,34 @@ def build_facade(cfg: AppConfig) -> BackupFacade:
             task_queue=task_queue,
             archive_cache_dir=cfg.archive_cache_dir,
         ),
-        process_upload=ProcessUploadVolumeUseCase(
+        process_upload_uc=ProcessUploadVolumeUseCase(
             source_items=repos.source_items,
             archive_volumes=repos.archive_volumes,
             storage_provider=provider,
             task_queue=task_queue,
-            remote_target=remote_target,
+            remote_target=cfg.telegram_target_chat_id,
         ),
-        process_cleanup=CleanupVolumeUseCase(
+        process_cleanup_uc=CleanupVolumeUseCase(
             source_items=repos.source_items,
             archive_volumes=repos.archive_volumes,
         ),
-        restore_volume=ProcessRestoreVolumeUseCase(
+        process_restore_volume_uc=ProcessRestoreVolumeUseCase(
             archive_volumes=repos.archive_volumes,
             storage_provider=provider,
-            staging_dir=cfg.archive_cache_dir / "restore",
+            staging_dir=restore_dir,
+            target_chat_id=cfg.telegram_target_chat_id,
         ),
-        restore_session=RestoreSessionUseCase(
-            archive_volumes=repos.archive_volumes,
-            storage_provider=provider,
-            staging_dir=cfg.archive_cache_dir / "restore",
+        report_archive_failure_uc=ReportArchiveFailureUseCase(repos.source_items),
+        report_upload_failure_uc=ReportUploadFailureUseCase(
+            repos.source_items,
+            repos.archive_volumes,
         ),
+        report_cleanup_failure_uc=ReportCleanupFailureUseCase(repos.source_items),
     )
 
 
 def bootstrap() -> None:
-    """Apply migrations, verify runtime dependencies, and wire the facade."""
+    """Apply migrations, verify runtime dependencies, and wire APIs."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -87,8 +179,9 @@ def bootstrap() -> None:
     client = redis.Redis.from_url(cfg.redis_url, decode_responses=False)
     client.ping()
     log.info("Redis ping OK.")
-    build_facade(cfg)
-    log.info("Facade wired.")
+    build_backup_api(cfg)
+    build_worker_api(cfg)
+    log.info("APIs wired.")
 
 
 if __name__ == "__main__":

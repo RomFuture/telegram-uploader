@@ -16,13 +16,13 @@ from use_cases.backup.report_failure import (
     ReportUploadFailureUseCase,
 )
 from use_cases.backup.start_backup_pipeline import StartBackupPipelineUseCase
-from use_cases.mappers import (
+from use_cases.session.create_session import CreateSessionUseCase
+from use_cases.shared.mappers import (
     domain_to_archive_volume_record,
     domain_to_session_record,
     source_item_record_to_domain,
 )
-from use_cases.ports.archive_service import ArchiveVolumePart
-from use_cases.session.create_session import CreateSessionUseCase
+from use_cases.shared.ports.archive_service import ArchiveVolumePart
 
 
 @pytest.fixture
@@ -40,11 +40,11 @@ def test_enqueue_persists_display_name_not_path_name(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "real-file-name.bin"
     source_file.write_bytes(b"x")
 
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "User facing title",
@@ -54,6 +54,27 @@ def test_enqueue_persists_display_name_not_path_name(
     assert stored is not None
     assert stored.display_name == "User facing title"
     assert stored.display_name != source_file.name
+    assert task_queue.archive_ids == []
+
+
+def test_start_backup_enqueues_queued_items(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
+    source_file = tmp_path / "file.bin"
+    source_file.write_bytes(b"x")
+
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
+        session.id,
+        source_file,
+        "Title",
+    )
+    assert task_queue.archive_ids == []
+
+    enqueued = StartBackupPipelineUseCase(repos, task_queue).execute(session.id)
+    assert enqueued == 1
     assert task_queue.archive_ids == [item.id]
 
 
@@ -62,13 +83,13 @@ def test_backup_happy_path_with_fakes(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     running = domain.mark_session(session, status=domain.SessionStatus.RUNNING)
     repos.sessions.update(domain_to_session_record(running))
 
     source_file = tmp_path / "payload.bin"
     source_file.write_bytes(b"payload")
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         running.id,
         source_file,
         "Payload",
@@ -132,10 +153,10 @@ def test_start_backup_pipeline_transitions_created_to_running(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "queued.bin"
     source_file.write_bytes(b"q")
-    EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "Queued item",
@@ -155,13 +176,13 @@ def test_start_backup_pipeline_enqueues_only_queued_items(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     running = domain.mark_session(session, status=domain.SessionStatus.RUNNING)
     repos.sessions.update(domain_to_session_record(running))
 
     queued_file = tmp_path / "queued.bin"
     queued_file.write_bytes(b"q")
-    queued_item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    queued_item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         running.id,
         queued_file,
         "Queued item",
@@ -169,7 +190,7 @@ def test_start_backup_pipeline_enqueues_only_queued_items(
 
     completed_file = tmp_path / "done.bin"
     completed_file.write_bytes(b"d")
-    completed_item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    completed_item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         running.id,
         completed_file,
         "Done item",
@@ -187,15 +208,63 @@ def test_start_backup_pipeline_enqueues_only_queued_items(
     assert task_queue.archive_ids == [queued_item.id]
 
 
+def test_start_backup_resumes_stuck_uploading_items(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from use_cases.shared.persistence import ArchiveVolumeRecord, SourceItemRecord
+
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
+    running = domain.mark_session(session, status=domain.SessionStatus.RUNNING)
+    repos.sessions.update(domain_to_session_record(running))
+
+    source_item_id = uuid4()
+    created_at = datetime.now(tz=UTC)
+    repos.source_items.add(
+        SourceItemRecord(
+            id=source_item_id,
+            session_id=running.id,
+            source_path=str(tmp_path / "stale.bin"),
+            display_name="stale.bin",
+            status=domain.SourceItemStatus.UPLOADING.value,
+            created_at=created_at,
+        )
+    )
+    volume_id = uuid4()
+    repos.archive_volumes.add(
+        ArchiveVolumeRecord(
+            id=volume_id,
+            source_item_id=source_item_id,
+            file_name="stale.7z.001",
+            local_path=str(tmp_path / "stale.7z.001"),
+            part_number=1,
+            status=domain.ArchiveVolumeStatus.CREATED.value,
+            external_file_id=None,
+            external_message_id=None,
+            provider_download_ref=None,
+            created_at=created_at,
+        )
+    )
+
+    enqueued = StartBackupPipelineUseCase(repos, task_queue).execute(running.id)
+
+    assert enqueued == 1
+    assert task_queue.upload_ids == [volume_id]
+
+
 def test_report_archive_failure_marks_source_item_failed(
     repos: InMemoryRepositories,
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "payload.bin"
     source_file.write_bytes(b"payload")
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "Payload",
@@ -213,10 +282,10 @@ def test_report_upload_failure_marks_volume_and_uploading_item_failed(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "payload.bin"
     source_file.write_bytes(b"payload")
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "Payload",
@@ -252,10 +321,10 @@ def test_retry_upload_skips_when_volume_already_uploaded(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "payload.bin"
     source_file.write_bytes(b"payload")
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "Payload",
@@ -294,10 +363,10 @@ def test_retry_archive_skips_when_item_already_uploading(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "payload.bin"
     source_file.write_bytes(b"payload")
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "Payload",
@@ -325,10 +394,10 @@ def test_retry_upload_continues_from_uploading_status(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "payload.bin"
     source_file.write_bytes(b"payload")
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "Payload",
@@ -369,10 +438,10 @@ def test_retry_cleanup_skips_when_item_already_completed(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "payload.bin"
     source_file.write_bytes(b"payload")
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "Payload",
@@ -413,10 +482,10 @@ def test_report_upload_failure_is_idempotent(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "payload.bin"
     source_file.write_bytes(b"payload")
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "Payload",
@@ -448,10 +517,10 @@ def test_report_cleanup_failure_marks_cleanup_item_failed(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "payload.bin"
     source_file.write_bytes(b"payload")
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "Payload",
@@ -488,10 +557,10 @@ def test_process_archive_raises_on_invalid_status(
     task_queue: FakeTaskQueue,
     tmp_path: Path,
 ) -> None:
-    session = CreateSessionUseCase(repos.sessions).execute("default", "secret")
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     source_file = tmp_path / "payload.bin"
     source_file.write_bytes(b"payload")
-    item = EnqueueSourceItemUseCase(repos.source_items, task_queue).execute(
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
         session.id,
         source_file,
         "Payload",
@@ -512,3 +581,50 @@ def test_process_archive_raises_on_invalid_status(
             task_queue=task_queue,
             archive_cache_dir=tmp_path / "cache",
         ).execute(item.id)
+
+
+def test_process_archive_preserves_folder_id_on_status_update(
+    repos: InMemoryRepositories,
+    task_queue: FakeTaskQueue,
+    tmp_path: Path,
+) -> None:
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from use_cases.shared.folders import DEFAULT_FOLDER_NAME
+    from use_cases.shared.persistence import BackupFolderRecord
+
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
+    folder_id = uuid4()
+    repos.folders.add(
+        BackupFolderRecord(
+            id=folder_id,
+            session_id=session.id,
+            name=DEFAULT_FOLDER_NAME,
+            created_at=datetime.now(tz=UTC),
+        )
+    )
+    source_file = tmp_path / "payload.bin"
+    source_file.write_bytes(b"payload")
+    item = EnqueueSourceItemUseCase(repos.source_items, repos.folders).execute(
+        session.id,
+        source_file,
+        "Payload",
+        folder_id=folder_id,
+    )
+
+    ProcessArchiveVolumeUseCase(
+        sessions=repos.sessions,
+        source_items=repos.source_items,
+        archive_volumes=repos.archive_volumes,
+        archive_service=FakeArchiveService(
+            volumes=[ArchiveVolumePart(1, tmp_path / "part.7z.001", "part.7z.001")],
+        ),
+        task_queue=task_queue,
+        archive_cache_dir=tmp_path / "cache",
+    ).execute(item.id)
+
+    stored = repos.source_items.get(item.id)
+    assert stored is not None
+    assert stored.folder_id == folder_id
+    assert stored.status == domain.SourceItemStatus.UPLOADING.value

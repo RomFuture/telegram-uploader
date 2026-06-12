@@ -9,11 +9,11 @@
 | Документ | Роль |
 |----------|------|
 | [INTERNAL_SPEC.md](INTERNAL_SPEC.md) | продуктовые правила (`display_name`, metadata для restore) |
-| [ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md) | `StorageProviderPort` живёт в use_cases; реализация — в `infrastructure/providers/` |
+| [PROJECT.md](PROJECT.md) | `StorageProviderPort` в use_cases; реализация — в `infrastructure/providers/` |
 | [BACKLOG.md](BACKLOG.md) | всё нереализованное (приоритеты) |
 | [PROJECT.md](PROJECT.md) | обзор проекта и индекс docs |
 
-При расхождении по слоям — приоритет у **ONION_ARCHITECTURE.md**.
+При расхождении по слоям — приоритет у **[PROJECT.md](PROJECT.md)**.
 
 ---
 

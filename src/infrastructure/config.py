@@ -9,8 +9,12 @@ class AppConfig:
     app_log_level: str
     postgres_dsn: str
     redis_url: str
+    telegram_provider: str
     telegram_bot_token: str
     telegram_bot_api_url: str
+    telegram_api_id: int | None
+    telegram_api_hash: str
+    telegram_session_path: Path
     telegram_target_chat_id: str
     archive_encryption_key: str | None
     archive_cache_dir: Path
@@ -46,13 +50,22 @@ def load_config() -> AppConfig:
 
     raw_key = getenv("ARCHIVE_ENCRYPTION_KEY", "").strip()
     raw_cache_dir = getenv("ARCHIVE_CACHE_DIR", "/tmp/telegram_uploader").strip()
+    raw_api_id = getenv("TELEGRAM_API_ID", "").strip()
+    raw_session_path = getenv(
+        "TELEGRAM_SESSION_PATH",
+        "/tmp/telegram_uploader/session.session",
+    ).strip()
     return AppConfig(
         app_env=getenv("APP_ENV", "development"),
         app_log_level=getenv("APP_LOG_LEVEL", "INFO"),
         postgres_dsn=f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}",
         redis_url=f"redis://{redis_host}:{redis_port}/{redis_db}",
+        telegram_provider=getenv("TELEGRAM_PROVIDER", "client").strip().lower(),
         telegram_bot_token=getenv("TELEGRAM_BOT_TOKEN", ""),
         telegram_bot_api_url=getenv("TELEGRAM_BOT_API_URL", "http://localhost:8081"),
+        telegram_api_id=int(raw_api_id) if raw_api_id.isdigit() else None,
+        telegram_api_hash=getenv("TELEGRAM_API_HASH", ""),
+        telegram_session_path=Path(raw_session_path),
         telegram_target_chat_id=getenv("TELEGRAM_TARGET_CHAT_ID", ""),
         archive_encryption_key=raw_key if raw_key else None,
         archive_cache_dir=Path(raw_cache_dir),

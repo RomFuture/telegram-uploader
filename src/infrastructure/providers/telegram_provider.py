@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib import error, parse, request
 
-from use_cases.dto import (
+from use_cases.shared.dto import (
     ClassifiedProviderError,
     ProviderErrorCategory,
     ProviderFileInfo,

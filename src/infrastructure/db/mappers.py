@@ -1,5 +1,10 @@
-from infrastructure.db.orm import ArchiveVolumeRow, SourceItemRow, UploadSessionRow
-from use_cases.persistence import ArchiveVolumeRecord, SessionRecord, SourceItemRecord
+from infrastructure.db.orm import ArchiveVolumeRow, BackupFolderRow, SourceItemRow, UploadSessionRow
+from use_cases.shared.persistence import (
+    ArchiveVolumeRecord,
+    BackupFolderRecord,
+    SessionRecord,
+    SourceItemRecord,
+)
 
 
 def upload_session_row_to_record(row: UploadSessionRow) -> SessionRecord:
@@ -30,6 +35,7 @@ def source_item_row_to_record(row: SourceItemRow) -> SourceItemRecord:
         display_name=row.display_name,
         status=row.status,
         created_at=row.created_at,
+        folder_id=row.folder_id,
     )
 
 
@@ -40,6 +46,25 @@ def record_to_source_item_row(record: SourceItemRecord) -> SourceItemRow:
         source_path=record.source_path,
         display_name=record.display_name,
         status=record.status,
+        created_at=record.created_at,
+        folder_id=record.folder_id,
+    )
+
+
+def backup_folder_row_to_record(row: BackupFolderRow) -> BackupFolderRecord:
+    return BackupFolderRecord(
+        id=row.id,
+        session_id=row.session_id,
+        name=row.name,
+        created_at=row.created_at,
+    )
+
+
+def record_to_backup_folder_row(record: BackupFolderRecord) -> BackupFolderRow:
+    return BackupFolderRow(
+        id=record.id,
+        session_id=record.session_id,
+        name=record.name,
         created_at=record.created_at,
     )
 

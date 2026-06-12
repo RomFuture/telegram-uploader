@@ -3,7 +3,8 @@ from pathlib import Path
 
 FORBIDDEN_USE_CASES = {"sqlalchemy", "urllib", "infrastructure", "celery"}
 FORBIDDEN_INFRASTRUCTURE = {"domain", "application"}
-FORBIDDEN_APPLICATION = {"domain", "use_cases"}
+FORBIDDEN_APPLICATION = {"domain"}
+ALLOWED_APPLICATION_USE_CASES = {"use_cases.public", "use_cases.public.commands"}
 
 
 def _top_level_module(name: str) -> str:
@@ -79,8 +80,21 @@ def test_application_has_no_domain_or_use_cases_imports() -> None:
     if not root.exists():
         return
     for path in root.rglob("*.py"):
-        violations = _collect_forbidden_imports(path, FORBIDDEN_APPLICATION)
-        assert not violations, f"{path}: {', '.join(violations)}"
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    top = _top_level_module(alias.name)
+                    if top in FORBIDDEN_APPLICATION:
+                        raise AssertionError(f"{path}: {alias.name}")
+                    if top == "use_cases" and alias.name not in ALLOWED_APPLICATION_USE_CASES:
+                        raise AssertionError(f"{path}: {alias.name}")
+            if isinstance(node, ast.ImportFrom) and node.module:
+                top = _top_level_module(node.module)
+                if top in FORBIDDEN_APPLICATION:
+                    raise AssertionError(f"{path}: {node.module}")
+                if top == "use_cases" and node.module not in ALLOWED_APPLICATION_USE_CASES:
+                    raise AssertionError(f"{path}: {node.module}")
 
 
 FORBIDDEN_DOMAIN_SUBMODULES = {"errors", "models", "factories", "actions"}

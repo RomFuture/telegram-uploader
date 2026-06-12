@@ -28,8 +28,8 @@ Create `.cursor/skills/` and add skills that encode **this repo’s** workflows:
 
 | Skill (idea) | Trigger | Contents |
 |--------------|---------|----------|
-| `onion-layers` | Touching imports across `domain` / `use_cases` / `infrastructure` / `application` | Link [ONION_ARCHITECTURE.md](ONION_ARCHITECTURE.md), layer boundary test, “GUI never imports infrastructure” |
-| `gate-and-smoke` | Closing backlog items | Link [ONION_LAYER_IMPLEMENTATION.md](ONION_LAYER_IMPLEMENTATION.md), `./scripts/run.sh`, manual smoke checklist |
+| `onion-layers` | Touching imports across `domain` / `use_cases` / `infrastructure` / `application` | Link [PROJECT.md §4–5](PROJECT.md#4-архитектура), layer boundary test, “GUI never imports infrastructure” |
+| `gate-and-smoke` | Closing backlog items | Link [PROJECT.md §10](PROJECT.md#10-режим-работы), `./scripts/run.sh`, manual smoke checklist |
 | `telegram-uploader-dev` | Run / debug / compose | `.env`, ports 5433, worker log commands |
 | `stop-slop` (optional wrapper) | Editing README, docs, user-facing prose | Point at `docs/stop-slop/SKILL.md` or vendor rules inline |
 

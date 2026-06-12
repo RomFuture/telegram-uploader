@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from infrastructure.archive.seven_zip_service import SevenZipService
-from use_cases.ports.archive_service import ArchiveServiceResult, ArchiveVolumePart
+from use_cases.shared.ports.archive_service import ArchiveServiceResult, ArchiveVolumePart
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,3 +38,6 @@ class ArchiveServiceAdapter:
             manifest_path=result.manifest_path,
             encryption_key_used=result.encryption_key_used,
         )
+
+    def extract(self, volume_paths: list[Path], dest_dir: Path, encryption_key: str) -> Path:
+        return self.service.extract(volume_paths, dest_dir, encryption_key)

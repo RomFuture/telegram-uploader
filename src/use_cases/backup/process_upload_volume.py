@@ -7,11 +7,11 @@ from use_cases.backup.idempotency import (
     UploadStepAction,
     decide_upload_on_retry,
 )
-from use_cases.mappers import domain_to_archive_volume_record, domain_to_source_item_record
-from use_cases.ports.storage_provider import StorageProviderPort
-from use_cases.ports.task_queue import TaskQueuePort
-from use_cases.repositories.archive_volume import ArchiveVolumeRepository
-from use_cases.repositories.source_item import SourceItemRepository
+from use_cases.shared.mappers import domain_to_archive_volume_record, merge_source_item_record
+from use_cases.shared.ports.storage_provider import StorageProviderPort
+from use_cases.shared.ports.task_queue import TaskQueuePort
+from use_cases.shared.repositories.archive_volume import ArchiveVolumeRepository
+from use_cases.shared.repositories.source_item import SourceItemRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,4 +59,5 @@ class ProcessUploadVolumeUseCase:
         item = self.source_items.require(uploaded.source_item_id)
         if domain.is_source_item(item, status=domain.SourceItemStatus.UPLOADING):
             cleanup_ready = domain.mark_source_item(item, status=domain.SourceItemStatus.CLEANUP)
-            self.source_items.update(domain_to_source_item_record(cleanup_ready))
+            existing = self.source_items.get(item.id)
+            self.source_items.update(merge_source_item_record(existing, cleanup_ready))

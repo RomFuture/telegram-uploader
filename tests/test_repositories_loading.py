@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 
 from domain.errors import DomainError
-from use_cases.repositories.loading import (
+from use_cases.shared.repositories.loading import (
     require_archive_volume_record,
     require_archive_volumes_for_session,
     require_session_record,

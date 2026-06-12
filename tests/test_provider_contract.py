@@ -1,13 +1,19 @@
 from pathlib import Path
 
-from use_cases.dto import (
+from infrastructure.providers.telegram_client_provider import (
+    build_client_download_ref,
+    parse_client_download_ref,
+)
+from infrastructure.providers.telegram_provider import TelegramProviderV1
+from use_cases.restore.refs import restore_ref_for_volume
+from use_cases.shared.dto import (
     ClassifiedProviderError,
     ProviderErrorCategory,
     ProviderFileInfo,
     ProviderLimits,
     UploadResult,
 )
-from use_cases.ports.storage_provider import StorageProviderPort
+from use_cases.shared.ports.storage_provider import StorageProviderPort
 
 
 class DummyProvider:
@@ -52,3 +58,28 @@ class DummyProvider:
 def test_dummy_provider_matches_storage_provider_port() -> None:
     provider = DummyProvider()
     assert isinstance(provider, StorageProviderPort)
+
+
+def test_telegram_bot_provider_matches_storage_provider_port() -> None:
+    provider = TelegramProviderV1(bot_token="token", base_url="http://localhost:8081")
+    assert isinstance(provider, StorageProviderPort)
+
+
+def test_restore_ref_for_volume_accepts_client_provider_ref() -> None:
+    import domain as domain_module
+
+    session = domain_module.create_session("default", "secret")
+    volume = domain_module.mark_archive_volume_uploaded(
+        domain_module.create_archive_volume(
+            source_item_id=session.id,
+            file_name="abc.7z.001",
+            local_path=Path("/tmp/outgoing/abc.7z.001"),
+            part_number=1,
+        ),
+        external_file_id="9001",
+        external_message_id="42",
+        provider_download_ref=build_client_download_ref("-1001", 42, 9001),
+    )
+    ref = restore_ref_for_volume(volume, "-1001")
+    assert ref == "client:-1001:42:9001"
+    assert parse_client_download_ref(ref) == ("-1001", 42, 9001)

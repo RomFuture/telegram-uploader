@@ -1,6 +1,6 @@
 """Application layer — GUI and backend_receiver (user-facing, English-only).
 
-Imports only ``infrastructure.facade`` (via ``backend_receiver``); no use_cases or domain.
+Imports only ``use_cases.public`` (via ``backend_receiver``); no domain or infrastructure DB.
 """
 
 from application.backend_receiver import (
