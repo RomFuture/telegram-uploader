@@ -13,10 +13,10 @@ from application.backend_receiver import (
     ProgressDTO,
     SessionViewDTO,
 )
+from application.env_store import save_settings_env
 from application.gui.drawer import ProgressDrawer
 from application.gui.errors import format_user_error
 from application.gui.explorer import ExplorerView
-from application.env_store import save_settings_env
 from application.gui.settings import SettingsDialog, TestClientApiDialogResult
 from application.gui.theme import apply_theme
 from application.gui.unlock import UnlockScreen
