@@ -1,0 +1,3 @@
+#!/bin/sh
+# Verify telegram-uploader system dependencies (Docker, Python, 7z).
+exec sh /usr/share/telegram-uploader/check-deps.sh "$@"

@@ -11,7 +11,7 @@ description: |
   Includes docker compose stack (Postgres, Redis, Celery workers) and Tkinter GUI.
 depends:
   - docker.io | docker-ce
-  - docker-compose-plugin
+  - docker-compose-plugin | docker-compose
   - python3 (>= 3.12)
   - python3-venv
   - python3-tk
@@ -24,6 +24,14 @@ contents:
     dst: /etc/telegram-uploader/env.example
     file_info:
       mode: 0644
+  - src: packaging/debian/check-deps.sh
+    dst: /usr/share/telegram-uploader/check-deps.sh
+    file_info:
+      mode: 0755
+  - src: packaging/bin/telegram-uploader-check-deps
+    dst: /usr/bin/telegram-uploader-check-deps
+    file_info:
+      mode: 0755
   - src: packaging/bin/env-path.sh
     dst: /usr/bin/env-path.sh
     file_info:
@@ -40,5 +48,6 @@ contents:
     dst: /usr/share/doc/telegram-uploader
     type: tree
 scripts:
+  preinstall: packaging/debian/preinst
   postinstall: packaging/debian/postinst
   preremove: packaging/debian/prerm

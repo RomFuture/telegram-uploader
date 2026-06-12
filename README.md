@@ -62,13 +62,25 @@ Smoke: Start Session → Add File → Start Backup → Refresh Progress. Volumes
 
 Download the latest `.deb` from [GitHub Releases](https://github.com/RomFuture/telegram-uploader/releases) (built automatically on tag `v*`, version synced with `pyproject.toml`).
 
+**Prefer `apt install`** — it pulls Docker and other dependencies automatically:
+
 ```bash
-sudo dpkg -i telegram-uploader_0.1.0_amd64.deb
-sudo apt -f install
+sudo apt update
+sudo apt install ./telegram-uploader_0.1.0_amd64.deb
+telegram-uploader-check-deps   # optional: verify Docker daemon, Python, 7z
 telegram-uploader --setup
-telegram-uploader           # GUI → Settings → Client API
-telegram-uploader-login     # after credentials configured (once)
+telegram-uploader
 ```
+
+If you used `dpkg -i` alone and dependencies are missing:
+
+```bash
+sudo apt -f install
+sudo apt install docker.io docker-compose-plugin python3-venv python3-tk p7zip-full
+telegram-uploader-check-deps
+```
+
+Avoid `sudo dpkg -i` without `apt -f install` — Docker may not be installed (common on fresh Linux).
 
 Config: `~/.config/telegram-uploader/.env` (created on first run). Application files: `/opt/telegram-uploader/`. See [PROJECT.md § Packaging](docs/PROJECT.md#packaging) for upgrade steps.
 

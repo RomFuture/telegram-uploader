@@ -3,6 +3,12 @@ set -e
 
 INSTALL_ROOT="/opt/telegram-uploader"
 
+if [ -f /usr/share/telegram-uploader/check-deps.sh ]; then
+  sh /usr/share/telegram-uploader/check-deps.sh
+elif [ -f "$(dirname "$0")/check-deps.sh" ]; then
+  sh "$(dirname "$0")/check-deps.sh"
+fi
+
 if ! command -v python3 >/dev/null 2>&1; then
   echo "telegram-uploader: python3 is required but not installed." >&2
   exit 1
@@ -15,11 +21,16 @@ python3 -m venv "${INSTALL_ROOT}/.venv"
 if [ ! -f /etc/telegram-uploader/.env ] && [ -f /etc/telegram-uploader/env.example ]; then
   echo ""
   echo "telegram-uploader installed."
-  echo "  telegram-uploader --setup"
-  echo "  telegram-uploader         # GUI → Settings → Client API"
-  echo "  telegram-uploader-login   # after Settings saved (Client API auth once)"
   echo ""
-  echo "Config file: ~/.config/telegram-uploader/.env (created on first run)"
+  echo "Required (install if missing):"
+  echo "  sudo apt install docker.io docker-compose-plugin python3-venv python3-tk p7zip-full"
+  echo "  sudo apt install ./telegram-uploader_*_amd64.deb   # preferred over dpkg -i alone"
+  echo ""
+  echo "  telegram-uploader-check-deps   # verify Docker, Python, 7z"
+  echo "  telegram-uploader --setup"
+  echo "  telegram-uploader              # GUI → Settings → Client API"
+  echo ""
+  echo "Config: ~/.config/telegram-uploader/.env"
   echo ""
 fi
 

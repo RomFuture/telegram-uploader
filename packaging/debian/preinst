@@ -1,0 +1,5 @@
+#!/bin/sh
+# Pre-install notice: list requirements (does not block — postinst validates).
+set -e
+echo "telegram-uploader requires: docker.io, docker-compose-plugin, python3 (>=3.12), python3-venv, python3-tk, p7zip-full"
+exit 0
