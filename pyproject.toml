@@ -66,6 +66,10 @@ module = "infrastructure.worker.tasks"
 disable_error_code = ["misc", "type-arg", "no-untyped-def"]
 
 [[tool.mypy.overrides]]
+module = "infrastructure.worker.celery_app"
+disable_error_code = ["misc"]
+
+[[tool.mypy.overrides]]
 module = ["telethon", "telethon.*"]
 ignore_missing_imports = true
 
