@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 
 import domain as domain
+from domain.models import ArchiveVolume
 from use_cases.restore.refs import (
     has_legacy_bot_volumes,
     is_client_restore_ref,
@@ -17,7 +18,7 @@ def _uploaded_volume(
     *,
     provider_download_ref: str | None = None,
     part_number: int = 1,
-) -> domain.ArchiveVolume:
+) -> ArchiveVolume:
     session = domain.create_session("default", "secret")
     volume = domain.create_archive_volume(
         source_item_id=session.id,
