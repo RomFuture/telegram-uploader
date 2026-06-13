@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,7 +39,12 @@ class UnconfiguredStorageProvider:
         raise UnconfiguredProviderError(_CONFIGURE_MSG)
 
     def download_file(
-        self, file_info: ProviderFileInfo, destination_path: Path, resume: bool = False
+        self,
+        file_info: ProviderFileInfo,
+        destination_path: Path,
+        resume: bool = False,
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> Path:
         raise UnconfiguredProviderError(_CONFIGURE_MSG)
 

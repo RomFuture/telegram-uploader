@@ -8,12 +8,15 @@ x-docker-runtime-env: &docker-runtime-env
   TELEGRAM_SESSION_PATH: /data/telegram/session.session
   TELEGRAM_BOT_API_URL: http://telegram-bot-api:8081
   ARCHIVE_CACHE_DIR: /data/archive-cache
+  INSTALL_ROOT: ${INSTALL_ROOT:-/opt/telegram-uploader}
+  APP_LOG_FILE: /data/telegram-uploader.log
 
 x-worker-volumes: &worker-volumes
   - ${HOST_SOURCE_MOUNT:-${HOME}}:${HOST_SOURCE_MOUNT:-${HOME}}:ro
   - ${INSTALL_ROOT:-/opt/telegram-uploader}:${INSTALL_ROOT:-/opt/telegram-uploader}:ro
   - archive-cache:/data/archive-cache
   - ${TELEGRAM_SESSION_DIR:-${HOME}/.config/telegram-uploader}:/data/telegram:rw
+  - ${INSTALL_ROOT:-.}/telegram-uploader.log:/data/telegram-uploader.log:rw
   - ./src:/app/src:ro
 
 services:

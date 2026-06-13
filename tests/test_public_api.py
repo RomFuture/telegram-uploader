@@ -13,52 +13,55 @@ from use_cases.backup.report_failure import (
 )
 from use_cases.backup.start_backup_pipeline import StartBackupPipelineUseCase
 from use_cases.public import (
-    BackupApi,
+    CeleryEntrypoint,
     EnqueueFileCommand,
+    GuiEntrypoint,
     StartSessionCommand,
-    WorkerApi,
 )
 from use_cases.restore.check_restore_ready import CheckRestoreReadyUseCase
 from use_cases.restore.process_restore_volume import ProcessRestoreVolumeUseCase
 from use_cases.restore.restore_session import RestoreSessionUseCase
-from use_cases.session.create_database import CreateDatabaseUseCase
-from use_cases.session.create_folder import CreateFolderUseCase
-from use_cases.session.create_session import CreateSessionUseCase
-from use_cases.session.get_session_progress import GetSessionProgressUseCase
-from use_cases.session.list_folders import ListFoldersUseCase
-from use_cases.session.list_session_profiles import ListSessionProfilesUseCase
+from use_cases.session.create import (
+    CreateDatabaseUseCase,
+    CreateFolderUseCase,
+    CreateSessionUseCase,
+)
+from use_cases.session.get_session_queue_snapshot import GetSessionQueueSnapshotUseCase
+from use_cases.session.list import ListFoldersUseCase, ListSessionProfilesUseCase
 from use_cases.session.manage_source_item import (
     DeleteSourceItemUseCase,
     MoveSourceItemUseCase,
     RenameSourceItemUseCase,
 )
 from use_cases.session.unlock_session import UnlockSessionUseCase
-from use_cases.telegram.test_client_api import TestClientApiUseCase
+from use_cases.telegram.verify_storage_provider import VerifyStorageProviderUseCase
 
 _SECRET_SESSION = StartSessionCommand(profile_name="default", encryption_key="secret")
 
 
-def _backup_api(
+def _gui_entrypoint(
     repos: InMemoryRepositories,
     task_queue: FakeTaskQueue,
     *,
     tmp_path: Path | None = None,
-) -> BackupApi:
+) -> GuiEntrypoint:
     restore_dir = (tmp_path or Path("/tmp")) / "restore"
     storage = FakeStorageProvider()
     archive_service = FakeArchiveService()
-    return BackupApi(
+    return GuiEntrypoint(
         create_session=CreateSessionUseCase(repos.sessions),
         create_database_uc=CreateDatabaseUseCase(repos.sessions, repos.folders),
         unlock_session_uc=UnlockSessionUseCase(repos.sessions),
         list_session_profiles=ListSessionProfilesUseCase(repos.sessions),
         list_folders_uc=ListFoldersUseCase(repos.folders),
         create_folder_uc=CreateFolderUseCase(repos.folders),
-        get_session_progress=GetSessionProgressUseCase(repos.source_items, repos.folders),
+        get_session_queue_snapshot=GetSessionQueueSnapshotUseCase(repos.source_items, repos.folders),
         enqueue_source_item=EnqueueSourceItemUseCase(repos.source_items, repos.folders),
         start_backup_pipeline=StartBackupPipelineUseCase(repos, task_queue),
         restore_session_uc=RestoreSessionUseCase(
             sessions=repos.sessions,
+            source_items=repos.source_items,
+            folders=repos.folders,
             archive_volumes=repos.archive_volumes,
             storage_provider=storage,
             archive_service=archive_service,
@@ -67,10 +70,12 @@ def _backup_api(
         ),
         check_restore_ready_uc=CheckRestoreReadyUseCase(
             archive_volumes=repos.archive_volumes,
+            source_items=repos.source_items,
+            folders=repos.folders,
             storage_provider=storage,
             target_chat_id="-1001",
         ),
-        test_client_api_uc=TestClientApiUseCase(
+        verify_storage_provider_uc=VerifyStorageProviderUseCase(
             test_file_path=Path(__file__).resolve().parents[1]
             / "src/infrastructure/data/client_api_test.md",
         ),
@@ -83,17 +88,17 @@ def _backup_api(
     )
 
 
-def _worker_api(
+def _celery_entrypoint(
     repos: InMemoryRepositories,
     task_queue: FakeTaskQueue,
     *,
     archive_service: FakeArchiveService | None = None,
     tmp_path: Path | None = None,
-) -> WorkerApi:
+) -> CeleryEntrypoint:
     cache_dir = (tmp_path or Path("/tmp")) / "cache"
     restore_dir = (tmp_path or Path("/tmp")) / "restore"
     storage = FakeStorageProvider()
-    return WorkerApi(
+    return CeleryEntrypoint(
         process_archive_uc=ProcessArchiveVolumeUseCase(
             sessions=repos.sessions,
             source_items=repos.source_items,
@@ -130,7 +135,7 @@ def _worker_api(
 
 def test_start_session_returns_result_without_domain_entity() -> None:
     repos = InMemoryRepositories()
-    api = _backup_api(repos, FakeTaskQueue())
+    api = _gui_entrypoint(repos, FakeTaskQueue())
 
     result = api.start_session(StartSessionCommand(profile_name="default", encryption_key="secret"))
 
@@ -143,7 +148,7 @@ def test_start_session_returns_result_without_domain_entity() -> None:
 
 def test_start_session_auto_generates_encryption_key() -> None:
     repos = InMemoryRepositories()
-    api = _backup_api(repos, FakeTaskQueue())
+    api = _gui_entrypoint(repos, FakeTaskQueue())
 
     result = api.start_session(StartSessionCommand(profile_name="default"))
 
@@ -156,7 +161,7 @@ def test_start_session_auto_generates_encryption_key() -> None:
 def test_enqueue_file_returns_queue_item_result(tmp_path: Path) -> None:
     repos = InMemoryRepositories()
     task_queue = FakeTaskQueue()
-    api = _backup_api(repos, task_queue, tmp_path=tmp_path)
+    api = _gui_entrypoint(repos, task_queue, tmp_path=tmp_path)
     session = api.start_session(_SECRET_SESSION)
 
     source_file = tmp_path / "real-name.bin"
@@ -174,10 +179,10 @@ def test_enqueue_file_returns_queue_item_result(tmp_path: Path) -> None:
     assert task_queue.archive_ids == []
 
 
-def test_get_progress_reads_display_name(tmp_path: Path) -> None:
+def test_get_queue_snapshot_reads_display_name(tmp_path: Path) -> None:
     repos = InMemoryRepositories()
     task_queue = FakeTaskQueue()
-    api = _backup_api(repos, task_queue, tmp_path=tmp_path)
+    api = _gui_entrypoint(repos, task_queue, tmp_path=tmp_path)
     session = api.start_session(_SECRET_SESSION)
 
     source_file = tmp_path / "ignored.bin"
@@ -190,21 +195,21 @@ def test_get_progress_reads_display_name(tmp_path: Path) -> None:
         )
     )
 
-    progress = api.get_progress(session.session_id)
+    snapshot = api.get_queue_snapshot(session.session_id)
 
-    assert len(progress.items) == 1
-    assert progress.items[0].display_name == "Shown in UI"
+    assert len(snapshot.items) == 1
+    assert snapshot.items[0].display_name == "Shown in UI"
 
 
-def test_worker_api_process_archive_delegates(tmp_path: Path) -> None:
+def test_celery_entrypoint_process_archive_delegates(tmp_path: Path) -> None:
     from use_cases.shared.ports.archive_service import ArchiveVolumePart
 
     repos = InMemoryRepositories()
     task_queue = FakeTaskQueue()
-    backup = _backup_api(repos, task_queue, tmp_path=tmp_path)
+    backup = _gui_entrypoint(repos, task_queue, tmp_path=tmp_path)
     part_one = tmp_path / "part001.7z"
     part_one.write_bytes(b"one")
-    worker = _worker_api(
+    worker = _celery_entrypoint(
         repos,
         task_queue,
         archive_service=FakeArchiveService(
@@ -228,10 +233,10 @@ def test_worker_api_process_archive_delegates(tmp_path: Path) -> None:
     assert len(task_queue.upload_ids) == 1
 
 
-def test_worker_api_report_failures_delegate() -> None:
+def test_celery_entrypoint_report_failures_delegate() -> None:
     repos = InMemoryRepositories()
     task_queue = FakeTaskQueue()
-    worker = _worker_api(repos, task_queue)
+    worker = _celery_entrypoint(repos, task_queue)
     session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     from use_cases.backup.enqueue_source_item import EnqueueSourceItemUseCase
 

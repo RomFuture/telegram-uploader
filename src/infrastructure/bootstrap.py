@@ -1,7 +1,6 @@
 """Composition root: config, migrations, health checks, API wiring."""
 
 import logging
-import sys
 from pathlib import Path
 from typing import cast
 
@@ -14,6 +13,7 @@ from infrastructure.db.sqlalchemy_repositories import SqlAlchemyRepositories
 from infrastructure.providers import TelegramClientProvider, TelegramProviderV1
 from infrastructure.providers.unconfigured_storage_provider import UnconfiguredStorageProvider
 from infrastructure.worker.celery_task_queue import CeleryTaskQueue
+from observation.logging_setup import setup_logging
 from use_cases.backup.cleanup_volume import CleanupVolumeUseCase
 from use_cases.backup.enqueue_source_item import EnqueueSourceItemUseCase
 from use_cases.backup.process_archive_volume import ProcessArchiveVolumeUseCase
@@ -24,16 +24,17 @@ from use_cases.backup.report_failure import (
     ReportUploadFailureUseCase,
 )
 from use_cases.backup.start_backup_pipeline import StartBackupPipelineUseCase
-from use_cases.public import BackupApi, WorkerApi
+from use_cases.public import CeleryEntrypoint, GuiEntrypoint
 from use_cases.restore.check_restore_ready import CheckRestoreReadyUseCase
 from use_cases.restore.process_restore_volume import ProcessRestoreVolumeUseCase
 from use_cases.restore.restore_session import RestoreSessionUseCase
-from use_cases.session.create_database import CreateDatabaseUseCase
-from use_cases.session.create_folder import CreateFolderUseCase
-from use_cases.session.create_session import CreateSessionUseCase
-from use_cases.session.get_session_progress import GetSessionProgressUseCase
-from use_cases.session.list_folders import ListFoldersUseCase
-from use_cases.session.list_session_profiles import ListSessionProfilesUseCase
+from use_cases.session.create import (
+    CreateDatabaseUseCase,
+    CreateFolderUseCase,
+    CreateSessionUseCase,
+)
+from use_cases.session.get_session_queue_snapshot import GetSessionQueueSnapshotUseCase
+from use_cases.session.list import ListFoldersUseCase, ListSessionProfilesUseCase
 from use_cases.session.manage_source_item import (
     DeleteSourceItemUseCase,
     MoveSourceItemUseCase,
@@ -42,7 +43,7 @@ from use_cases.session.manage_source_item import (
 from use_cases.session.unlock_session import UnlockSessionUseCase
 from use_cases.shared.ports.storage_provider import StorageProviderPort
 from use_cases.shared.repositories import Repositories
-from use_cases.telegram.test_client_api import TestClientApiUseCase
+from use_cases.telegram.verify_storage_provider import VerifyStorageProviderUseCase
 
 
 def _wire_repositories(cfg: AppConfig) -> Repositories:
@@ -97,26 +98,28 @@ def _client_api_test_file() -> Path:
     return bundled
 
 
-def build_backup_api(cfg: AppConfig) -> BackupApi:
-    """Wire GUI-facing use cases into BackupApi."""
+def wire_gui_entrypoint(cfg: AppConfig) -> GuiEntrypoint:
+    """Wire GUI-facing use cases into GuiEntrypoint (does not start Celery workers)."""
     repos = _wire_repositories(cfg)
     task_queue = CeleryTaskQueue()
     provider = build_storage_provider(cfg)
     archive_service = ArchiveServiceAdapter(service=SevenZipService())
     restore_dir = cfg.archive_cache_dir / "restore"
 
-    return BackupApi(
+    return GuiEntrypoint(
         create_session=CreateSessionUseCase(repos.sessions),
         create_database_uc=CreateDatabaseUseCase(repos.sessions, repos.folders),
         unlock_session_uc=UnlockSessionUseCase(repos.sessions),
         list_session_profiles=ListSessionProfilesUseCase(repos.sessions),
         list_folders_uc=ListFoldersUseCase(repos.folders),
         create_folder_uc=CreateFolderUseCase(repos.folders),
-        get_session_progress=GetSessionProgressUseCase(repos.source_items, repos.folders),
+        get_session_queue_snapshot=GetSessionQueueSnapshotUseCase(repos.source_items, repos.folders),
         enqueue_source_item=EnqueueSourceItemUseCase(repos.source_items, repos.folders),
         start_backup_pipeline=StartBackupPipelineUseCase(repos, task_queue),
         restore_session_uc=RestoreSessionUseCase(
             sessions=repos.sessions,
+            source_items=repos.source_items,
+            folders=repos.folders,
             archive_volumes=repos.archive_volumes,
             storage_provider=provider,
             archive_service=archive_service,
@@ -125,10 +128,14 @@ def build_backup_api(cfg: AppConfig) -> BackupApi:
         ),
         check_restore_ready_uc=CheckRestoreReadyUseCase(
             archive_volumes=repos.archive_volumes,
+            source_items=repos.source_items,
+            folders=repos.folders,
             storage_provider=provider,
             target_chat_id=cfg.telegram_target_chat_id,
         ),
-        test_client_api_uc=TestClientApiUseCase(test_file_path=_client_api_test_file()),
+        verify_storage_provider_uc=VerifyStorageProviderUseCase(
+            test_file_path=_client_api_test_file(),
+        ),
         rename_source_item_uc=RenameSourceItemUseCase(repos.source_items),
         move_source_item_uc=MoveSourceItemUseCase(repos.source_items, repos.folders),
         delete_source_item_uc=DeleteSourceItemUseCase(
@@ -138,15 +145,15 @@ def build_backup_api(cfg: AppConfig) -> BackupApi:
     )
 
 
-def build_worker_api(cfg: AppConfig) -> WorkerApi:
-    """Wire worker-facing use cases into WorkerApi."""
+def wire_celery_entrypoint(cfg: AppConfig) -> CeleryEntrypoint:
+    """Wire pipeline use cases into CeleryEntrypoint (called when a Celery task runs)."""
     repos = _wire_repositories(cfg)
     task_queue = CeleryTaskQueue()
     provider = build_storage_provider(cfg)
     archive_service = ArchiveServiceAdapter(service=SevenZipService())
     restore_dir = cfg.archive_cache_dir / "restore"
 
-    return WorkerApi(
+    return CeleryEntrypoint(
         process_archive_uc=ProcessArchiveVolumeUseCase(
             sessions=repos.sessions,
             source_items=repos.source_items,
@@ -183,22 +190,18 @@ def build_worker_api(cfg: AppConfig) -> WorkerApi:
 
 def bootstrap() -> None:
     """Apply migrations, verify runtime dependencies, and wire APIs."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        stream=sys.stdout,
-    )
-    log = logging.getLogger("infrastructure.bootstrap")
     cfg = load_config()
+    setup_logging(log_file=cfg.log_file_path, level=cfg.app_log_level)
+    log = logging.getLogger("infrastructure.bootstrap")
     log.info("Environment: %s", cfg.app_env)
     apply_migrations(cfg.postgres_dsn)
     log.info("Database migrations applied.")
     client = redis.Redis.from_url(cfg.redis_url, decode_responses=False)
     client.ping()
     log.info("Redis ping OK.")
-    build_backup_api(cfg)
-    build_worker_api(cfg)
-    log.info("APIs wired.")
+    wire_gui_entrypoint(cfg)
+    wire_celery_entrypoint(cfg)
+    log.info("Entrypoints wired.")
 
 
 if __name__ == "__main__":

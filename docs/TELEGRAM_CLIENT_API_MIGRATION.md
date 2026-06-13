@@ -2,7 +2,7 @@
 
 Гайд по замене `TelegramProviderV1` (HTTP Bot API + local `telegram-bot-api`) на **user-session Client API** (MTProto) для надёжного upload/download из целевой группы.
 
-**Статус:** 🟡 **частично выполнено (2026-06-12)** — Client API default для backup/upload; GUI sign-in + Test Client API; restore download — smoke TBD. Bot API — legacy (`TELEGRAM_PROVIDER=bot`).
+**Статус:** 🟡 **частично выполнено (2026-06-12)** — Client API default; Test Client API проверяет upload + download; restore refs выровнены (`client:` only). **GUI Restore Session smoke — Roman.**
 
 **Связанные документы:**
 
@@ -58,14 +58,13 @@ use_cases/shared/ports/storage_provider.py      → StorageProviderPort (Protoco
 2. `sendDocument` multipart → Bot API
 3. В БД: `external_file_id`, `external_message_id`, `provider_download_ref`
 
-### Restore flow (сломан на download)
+### Restore flow (Client API)
 
-1. `RestoreSessionUseCase` → `get_file_info(external_file_id)` → `getFile`
-2. `download_file` → `GET {base_url}/file/bot{token}/{file_path}`
-3. **HTTP 404** — типичные причины:
-   - bot `file_id` / `file_path` протухли или недоступны с хоста GUI
-   - `provider_download_ref` при upload = `file_unique_id`, при download используется другой путь из `getFile`
-   - кэш local Bot API не совпадает с контекстом upload (Docker) vs restore (host)
+1. `RestoreSessionUseCase` → `restore_ref_for_volume` → `client:{chat}:{msg}:{doc}` only
+2. `get_file_info(ref)` → `download_file` via Telethon (`get_messages` + `download_media`)
+3. Legacy Bot API volumes → `legacy_volumes` error; re-backup with `TELEGRAM_PROVIDER=client`
+
+**Bot API (legacy):** HTTP 404 на download — см. `TelegramProviderV1`.
 
 ### Что уже в БД (не меняем схему)
 
@@ -129,12 +128,11 @@ flowchart LR
 
 **Рекомендация:** при upload client provider писать структурированный ref в `provider_download_ref`. Restore читает ref, не полагается на протухающий `file_id`.
 
-### Изменения в use_cases (минимальные)
+### Изменения в use_cases (v1 policy)
 
-- `use_cases.restore.refs.restore_download_ref` → расширить до `restore_ref_for_volume(volume)`:
-  - приоритет `provider_download_ref` (client ref)
-  - fallback: `external_message_id` + `TELEGRAM_TARGET_CHAT_ID` из config
-- Сигнатуру `StorageProviderPort` можно **не менять**, если `get_file_info(ref)` принимает opaque string.
+- `use_cases.restore.refs`: **`client:` only** — `restore_ref_for_volume`, `is_client_restore_ref`, `has_legacy_bot_volumes`
+- Нет fallback на `message:{chat}:{id}` или bot `file_id` (не поддерживается `TelegramClientProvider`)
+- `StorageProviderPort` без изменений; `get_file_info(ref)` принимает opaque `client:` string
 
 ---
 
@@ -264,16 +262,17 @@ Client API решает **download**. Отдельно (см. [BACKLOG.md](BACKL
 ## Порядок работ (чеклист)
 
 ```
-[ ] 0. Spike Telethon round-trip
-[ ] 1. TelegramClientProvider + unit tests
-[ ] 2. AppConfig + TELEGRAM_PROVIDER switch
-[ ] 3. bootstrap wiring
-[ ] 4. Upload в worker (новые backup)
-[ ] 5. Download в restore (GUI + worker)
-[ ] 6. Contract + integration tests
-[ ] 7. Убрать telegram-bot-api из compose
-[ ] 8. Deprecate TelegramBotProviderV1
-[ ] 9. Restore: 7z extract → dest_path
+[x] 0. Spike Telethon round-trip (scripts/telegram_client_spike.py)
+[x] 1. TelegramClientProvider + unit tests
+[x] 2. AppConfig + TELEGRAM_PROVIDER switch
+[x] 3. bootstrap wiring
+[x] 4. Upload в worker (новые backup)
+[x] 5. Download в restore (GUI + worker hook)
+[x] 6. Contract + integration tests (Test Client API round-trip; TELEGRAM_INTEGRATION=1 opt-in)
+[ ] 7. GUI Restore Session smoke (Roman) — полный backup → restore → dest_path
+[ ] 8. Убрать telegram-bot-api из compose
+[ ] 9. Deprecate TelegramBotProviderV1
+[x] 10. Restore: 7z extract → dest_path (UC-7)
 ```
 
 ---

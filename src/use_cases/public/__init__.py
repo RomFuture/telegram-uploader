@@ -1,29 +1,29 @@
 """Public API for application and worker adapters."""
 
-from use_cases.public.backup_api import BackupApi
+from use_cases.public.celery_entrypoint import CeleryEntrypoint
 from use_cases.public.commands import (
     EnqueueFileCommand,
     RestoreSessionCommand,
     StartSessionCommand,
 )
+from use_cases.public.gui_entrypoint import GuiEntrypoint
 from use_cases.public.results import (
-    ProgressResult,
     QueueItemResult,
+    QueueItemSnapshotResult,
     RestoreResult,
+    SessionQueueSnapshotResult,
     SessionResult,
-    SourceItemProgressResult,
 )
-from use_cases.public.worker_api import WorkerApi
 
 __all__ = [
-    "BackupApi",
+    "CeleryEntrypoint",
     "EnqueueFileCommand",
-    "ProgressResult",
+    "GuiEntrypoint",
     "QueueItemResult",
+    "QueueItemSnapshotResult",
     "RestoreResult",
     "RestoreSessionCommand",
+    "SessionQueueSnapshotResult",
     "SessionResult",
-    "SourceItemProgressResult",
     "StartSessionCommand",
-    "WorkerApi",
 ]

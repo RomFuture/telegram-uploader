@@ -26,10 +26,7 @@ class EnqueueSourceItemUseCase:
         if folder_id is not None:
             folder = self.folders.get(folder_id)
             if folder is None or folder.session_id != session_id:
-                raise domain.DomainError(
-                    code="folder_not_found",
-                    message=f"Folder not found in session: {folder_id}",
-                )
+                raise domain.DomainError.folder_not_found(folder_id)
         item = domain.create_source_item(session_id, source_path, display_name)
         self.source_items.add(domain_to_source_item_record(item, folder_id=folder_id))
         return item

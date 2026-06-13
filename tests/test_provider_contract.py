@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 
 from infrastructure.providers.telegram_client_provider import (
@@ -5,7 +6,11 @@ from infrastructure.providers.telegram_client_provider import (
     parse_client_download_ref,
 )
 from infrastructure.providers.telegram_provider import TelegramProviderV1
-from use_cases.restore.refs import restore_ref_for_volume
+from use_cases.restore.refs import (
+    is_client_restore_ref,
+    is_volume_restorable,
+    restore_ref_for_volume,
+)
 from use_cases.shared.dto import (
     ClassifiedProviderError,
     ProviderErrorCategory,
@@ -39,7 +44,12 @@ class DummyProvider:
         )
 
     def download_file(
-        self, file_info: ProviderFileInfo, destination_path: Path, resume: bool = False
+        self,
+        file_info: ProviderFileInfo,
+        destination_path: Path,
+        resume: bool = False,
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> Path:
         return destination_path
 
@@ -69,6 +79,7 @@ def test_restore_ref_for_volume_accepts_client_provider_ref() -> None:
     import domain as domain_module
 
     session = domain_module.create_session("default", "secret")
+    client_ref = build_client_download_ref("-1001", 42, 9001)
     volume = domain_module.mark_archive_volume_uploaded(
         domain_module.create_archive_volume(
             source_item_id=session.id,
@@ -78,8 +89,16 @@ def test_restore_ref_for_volume_accepts_client_provider_ref() -> None:
         ),
         external_file_id="9001",
         external_message_id="42",
-        provider_download_ref=build_client_download_ref("-1001", 42, 9001),
+        provider_download_ref=client_ref,
     )
     ref = restore_ref_for_volume(volume, "-1001")
-    assert ref == "client:-1001:42:9001"
+    assert ref == client_ref
+    assert is_client_restore_ref(ref)
     assert parse_client_download_ref(ref) == ("-1001", 42, 9001)
+    assert is_volume_restorable(volume, "-1001")
+
+
+def test_client_upload_ref_matches_restore_policy() -> None:
+    client_ref = build_client_download_ref("-100123", 7, 555)
+    assert is_client_restore_ref(client_ref)
+    assert parse_client_download_ref(client_ref) == ("-100123", 7, 555)

@@ -17,9 +17,7 @@ class ProgressDrawer(ttk.Frame):
         header = ttk.Frame(self)
         header.pack(fill="x")
         ttk.Label(header, text="Progress", style="Muted.TLabel").pack(side="left")
-        ttk.Label(header, textvariable=self._message_var, style="Muted.TLabel").pack(
-            side="right"
-        )
+        ttk.Label(header, textvariable=self._message_var, style="Muted.TLabel").pack(side="right")
 
         self._detail = ttk.Label(
             self,
@@ -37,20 +35,30 @@ class ProgressDrawer(ttk.Frame):
     def show_idle(self) -> None:
         self._message_var.set("Idle")
         self._detail_var.set("")
-        self._bar.stop()
-        if self._bar.winfo_ismapped():
-            self._bar.pack_forget()
+        self._stop_bar()
 
     def show_working(self, message: str, detail: str = "") -> None:
         self._message_var.set(message)
         self._detail_var.set(detail)
-        if not self._bar.winfo_ismapped():
-            self._bar.pack(anchor="w", pady=(6, 0))
-        self._bar.start(12)
+        self._start_bar()
+
+    def show_restoring(self, detail: str) -> None:
+        """Long-running restore: visible label + indeterminate bar."""
+        self._message_var.set("Restoring")
+        self._detail_var.set(detail)
+        self._start_bar()
 
     def show_result(self, message: str, detail: str = "") -> None:
         self._message_var.set(message)
         self._detail_var.set(detail)
+        self._stop_bar()
+
+    def _start_bar(self) -> None:
+        if not self._bar.winfo_ismapped():
+            self._bar.pack(fill="x", pady=(6, 0))
+        self._bar.start(10)
+
+    def _stop_bar(self) -> None:
         self._bar.stop()
         if self._bar.winfo_ismapped():
             self._bar.pack_forget()

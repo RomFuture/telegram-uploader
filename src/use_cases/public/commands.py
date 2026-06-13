@@ -39,6 +39,7 @@ class CreateFolderCommand:
 class RestoreSessionCommand:
     session_id: UUID
     dest_path: Path
+    folder_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

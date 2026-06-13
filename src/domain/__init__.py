@@ -9,6 +9,8 @@ What each file is for:
 - ``errors.py`` — typed failures when someone tries an illegal state change.
 
 Import as ``import domain as domain``, not from submodules.
+
+Full guide: ``MANUAL.md`` in this package.
 """
 
 from .actions import (

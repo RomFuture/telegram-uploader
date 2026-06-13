@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -33,7 +34,6 @@ def parse_client_download_ref(ref: str) -> tuple[str, int, int]:
     if len(parts) != 4 or parts[0] != CLIENT_REF_PREFIX:
         raise TelegramClientProviderError(f"Invalid client download ref: {ref}")
     return parts[1], int(parts[2]), int(parts[3])
-
 
 
 def _run_async(coro: Any) -> Any:
@@ -125,15 +125,29 @@ class TelegramClientProvider:
             )
 
     def download_file(
-        self, file_info: ProviderFileInfo, destination_path: Path, resume: bool = False
+        self,
+        file_info: ProviderFileInfo,
+        destination_path: Path,
+        resume: bool = False,
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> Path:
         if resume:
             raise TelegramClientProviderError(
                 "Resume download is not supported for client provider"
             )
-        return cast(Path, _run_async(self._download_async(file_info, destination_path)))
+        return cast(
+            Path,
+            _run_async(self._download_async(file_info, destination_path, on_progress=on_progress)),
+        )
 
-    async def _download_async(self, file_info: ProviderFileInfo, destination_path: Path) -> Path:
+    async def _download_async(
+        self,
+        file_info: ProviderFileInfo,
+        destination_path: Path,
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> Path:
         chat_id, message_id, _document_id = parse_client_download_ref(
             file_info.provider_download_ref
         )
@@ -145,7 +159,11 @@ class TelegramClientProvider:
                 raise TelegramClientProviderError(
                     f"Message {message_id} not found in chat {chat_id}"
                 )
-            downloaded = await client.download_media(message, file=str(destination_path))
+            downloaded = await client.download_media(
+                message,
+                file=str(destination_path),
+                progress_callback=on_progress,
+            )
             if downloaded is None:
                 raise TelegramClientProviderError(
                     f"Download failed for message {message_id} in chat {chat_id}"

@@ -24,7 +24,7 @@ class QueueItemResult:
 
 
 @dataclass(frozen=True, slots=True)
-class SourceItemProgressResult:
+class QueueItemSnapshotResult:
     source_item_id: UUID
     display_name: str
     status: str
@@ -35,9 +35,9 @@ class SourceItemProgressResult:
 
 
 @dataclass(frozen=True, slots=True)
-class ProgressResult:
+class SessionQueueSnapshotResult:
     session_id: UUID
-    items: tuple[SourceItemProgressResult, ...]
+    items: tuple[QueueItemSnapshotResult, ...]
 
 
 @dataclass(frozen=True, slots=True)

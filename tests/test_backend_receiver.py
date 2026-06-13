@@ -5,11 +5,11 @@ from uuid import uuid4
 
 from application.backend_receiver import BackendReceiver
 from use_cases.public.results import (
-    ProgressResult,
     QueueItemResult,
+    QueueItemSnapshotResult,
     RestoreResult,
+    SessionQueueSnapshotResult,
     SessionResult,
-    SourceItemProgressResult,
 )
 
 
@@ -100,14 +100,14 @@ def test_enqueue_file_passes_display_name_to_api(tmp_path: Path) -> None:
     assert item.display_name != source_file.name
 
 
-def test_get_session_progress_returns_display_name_from_api() -> None:
+def test_get_session_queue_snapshot_returns_display_name_from_api() -> None:
     api = MagicMock()
     session_id = uuid4()
     source_item_id = uuid4()
-    api.get_progress.return_value = ProgressResult(
+    api.get_queue_snapshot.return_value = SessionQueueSnapshotResult(
         session_id=session_id,
         items=(
-            SourceItemProgressResult(
+            QueueItemSnapshotResult(
                 source_item_id=source_item_id,
                 display_name="Shown in UI",
                 status="queued",
@@ -116,11 +116,11 @@ def test_get_session_progress_returns_display_name_from_api() -> None:
     )
     receiver = BackendReceiver(api)
 
-    progress = receiver.get_session_progress(session_id)
+    snapshot = receiver.get_session_queue_snapshot(session_id)
 
-    api.get_progress.assert_called_once_with(session_id)
-    assert len(progress.items) == 1
-    assert progress.items[0].display_name == "Shown in UI"
+    api.get_queue_snapshot.assert_called_once_with(session_id)
+    assert len(snapshot.items) == 1
+    assert snapshot.items[0].display_name == "Shown in UI"
 
 
 def test_request_restore_delegates_to_api(tmp_path: Path) -> None:

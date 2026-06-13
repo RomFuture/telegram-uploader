@@ -1,3 +1,5 @@
+"""Entry point for Celery tasks: one method per pipeline stage."""
+
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -14,7 +16,7 @@ from use_cases.restore.process_restore_volume import ProcessRestoreVolumeUseCase
 
 
 @dataclass(frozen=True, slots=True)
-class WorkerApi:
+class CeleryEntrypoint:
     process_archive_uc: ProcessArchiveVolumeUseCase
     process_upload_uc: ProcessUploadVolumeUseCase
     process_cleanup_uc: CleanupVolumeUseCase

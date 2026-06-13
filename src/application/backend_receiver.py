@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import UUID
 
 from application.settings_values import SettingsValues
-from use_cases.public import BackupApi
+from use_cases.public import GuiEntrypoint
 from use_cases.public.commands import (
     CreateDatabaseCommand,
     CreateFolderCommand,
@@ -47,7 +47,7 @@ class QueueItemViewDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class ProgressDTO:
+class SessionQueueSnapshotDTO:
     session_id: UUID
     items: tuple[QueueItemViewDTO, ...]
 
@@ -73,14 +73,14 @@ class TestClientApiResultDTO:
 
 @dataclass(frozen=True, slots=True)
 class BackendReceiver:
-    api: BackupApi
+    gui: GuiEntrypoint
     build_client_provider: Callable[..., object] | None = None
 
     def list_profiles(self) -> tuple[str, ...]:
-        return self.api.list_profiles()
+        return self.gui.list_profiles()
 
     def unlock_session(self, profile_name: str, encryption_key: str) -> SessionViewDTO:
-        result = self.api.unlock_session(
+        result = self.gui.unlock_session(
             UnlockSessionCommand(profile_name=profile_name, encryption_key=encryption_key)
         )
         return SessionViewDTO(
@@ -90,7 +90,7 @@ class BackendReceiver:
         )
 
     def create_database(self, profile_name: str, encryption_key: str) -> SessionViewDTO:
-        result = self.api.create_database(
+        result = self.gui.create_database(
             CreateDatabaseCommand(profile_name=profile_name, encryption_key=encryption_key)
         )
         return SessionViewDTO(
@@ -102,11 +102,11 @@ class BackendReceiver:
     def list_folders(self, session_id: UUID) -> tuple[FolderViewDTO, ...]:
         return tuple(
             FolderViewDTO(folder_id=folder.folder_id, name=folder.name)
-            for folder in self.api.list_folders(session_id)
+            for folder in self.gui.list_folders(session_id)
         )
 
     def create_folder(self, session_id: UUID, name: str) -> FolderViewDTO:
-        result = self.api.create_folder(CreateFolderCommand(session_id=session_id, name=name))
+        result = self.gui.create_folder(CreateFolderCommand(session_id=session_id, name=name))
         return FolderViewDTO(folder_id=result.folder_id, name=result.name)
 
     def enqueue_file(
@@ -116,7 +116,7 @@ class BackendReceiver:
         display_name: str,
         folder_id: UUID | None = None,
     ) -> QueueItemViewDTO:
-        result = self.api.enqueue_file(
+        result = self.gui.enqueue_file(
             EnqueueFileCommand(
                 session_id=session_id,
                 source_path=source_path,
@@ -131,12 +131,12 @@ class BackendReceiver:
         )
 
     def start_backup(self, session_id: UUID) -> int:
-        return self.api.start_backup(session_id)
+        return self.gui.start_backup(session_id)
 
-    def get_session_progress(self, session_id: UUID) -> ProgressDTO:
-        progress = self.api.get_progress(session_id)
-        return ProgressDTO(
-            session_id=progress.session_id,
+    def get_session_queue_snapshot(self, session_id: UUID) -> SessionQueueSnapshotDTO:
+        snapshot = self.gui.get_queue_snapshot(session_id)
+        return SessionQueueSnapshotDTO(
+            session_id=snapshot.session_id,
             items=tuple(
                 QueueItemViewDTO(
                     source_item_id=item.source_item_id,
@@ -147,21 +147,36 @@ class BackendReceiver:
                     size_label=item.size_label,
                     modified_label=item.modified_label,
                 )
-                for item in progress.items
+                for item in snapshot.items
             ),
         )
 
-    def request_restore(self, session_id: UUID, dest_path: Path) -> RestoreResultDTO:
-        result = self.api.restore_session(
-            RestoreSessionCommand(session_id=session_id, dest_path=dest_path)
+    def request_restore(
+        self,
+        session_id: UUID,
+        dest_path: Path,
+        *,
+        folder_id: UUID | None = None,
+    ) -> RestoreResultDTO:
+        result = self.gui.restore_session(
+            RestoreSessionCommand(
+                session_id=session_id,
+                dest_path=dest_path,
+                folder_id=folder_id,
+            )
         )
         return RestoreResultDTO(
             session_id=result.session_id,
             downloaded_paths=result.downloaded_paths,
         )
 
-    def check_restore_ready(self, session_id: UUID) -> RestorePreflightDTO:
-        result = self.api.check_restore_ready(session_id)
+    def check_restore_ready(
+        self,
+        session_id: UUID,
+        *,
+        folder_id: UUID | None = None,
+    ) -> RestorePreflightDTO:
+        result = self.gui.check_restore_ready(session_id, folder_id=folder_id)
         return RestorePreflightDTO(ready=result.ready, message=result.message)
 
     def test_client_api(self, settings: SettingsValues) -> TestClientApiResultDTO:
@@ -206,7 +221,7 @@ class BackendReceiver:
             api_hash=api_hash,
             session_path=session_path,
         )
-        result = self.api.test_client_api(provider, chat_id)
+        result = self.gui.verify_storage_provider(provider, chat_id)
         return TestClientApiResultDTO(
             ok=result.ok,
             stage=result.stage,
@@ -214,7 +229,7 @@ class BackendReceiver:
         )
 
     def rename_source_item(self, source_item_id: UUID, display_name: str) -> None:
-        self.api.rename_source_item(
+        self.gui.rename_source_item(
             RenameSourceItemCommand(
                 source_item_id=source_item_id,
                 display_name=display_name,
@@ -222,9 +237,9 @@ class BackendReceiver:
         )
 
     def move_source_item(self, source_item_id: UUID, folder_id: UUID) -> None:
-        self.api.move_source_item(
+        self.gui.move_source_item(
             MoveSourceItemCommand(source_item_id=source_item_id, folder_id=folder_id)
         )
 
     def delete_source_item(self, source_item_id: UUID) -> None:
-        self.api.delete_source_item(DeleteSourceItemCommand(source_item_id=source_item_id))
+        self.gui.delete_source_item(DeleteSourceItemCommand(source_item_id=source_item_id))

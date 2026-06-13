@@ -9,6 +9,11 @@ from use_cases.shared.repositories.archive_volume import ArchiveVolumeRepository
 
 @dataclass(frozen=True, slots=True)
 class ProcessRestoreVolumeUseCase:
+    """Download one archive volume to staging (Celery worker hook).
+
+    GUI restore uses RestoreSessionUseCase in-process; this UC is not on that path.
+    """
+
     archive_volumes: ArchiveVolumeRepository
     storage_provider: StorageProviderPort
     staging_dir: Path

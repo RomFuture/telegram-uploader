@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -21,7 +22,12 @@ class StorageProviderPort(Protocol):
         """Fetch provider metadata required to download a file."""
 
     def download_file(
-        self, file_info: ProviderFileInfo, destination_path: Path, resume: bool = False
+        self,
+        file_info: ProviderFileInfo,
+        destination_path: Path,
+        resume: bool = False,
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> Path:
         """Download or resume download to destination path."""
 

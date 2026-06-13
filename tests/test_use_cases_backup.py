@@ -16,7 +16,7 @@ from use_cases.backup.report_failure import (
     ReportUploadFailureUseCase,
 )
 from use_cases.backup.start_backup_pipeline import StartBackupPipelineUseCase
-from use_cases.session.create_session import CreateSessionUseCase
+from use_cases.session.create import CreateSessionUseCase
 from use_cases.shared.mappers import (
     domain_to_archive_volume_record,
     domain_to_session_record,

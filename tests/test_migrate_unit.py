@@ -15,8 +15,6 @@ def test_apply_migrations_inserts_each_file_once(mock_connect: MagicMock) -> Non
 
     assert conn.execute.call_count >= 2
     insert_calls = [
-        call
-        for call in conn.execute.call_args_list
-        if "INSERT INTO schema_migrations" in str(call)
+        call for call in conn.execute.call_args_list if "INSERT INTO schema_migrations" in str(call)
     ]
     assert len(insert_calls) >= 1

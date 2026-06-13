@@ -82,6 +82,8 @@ load_env
 export INSTALL_ROOT="$ROOT"
 validate_telegram_setup
 
+touch "${ROOT}/telegram-uploader.log"
+
 if ! docker compose up -d --build; then
   echo "error: docker compose failed. Recent telegram-bot-api logs:" >&2
   docker compose logs --tail=30 telegram-bot-api >&2 || true
@@ -113,6 +115,7 @@ export PYTHONPATH="${ROOT}/src"
 echo "Applying database migrations..."
 "$PYTHON" -c "from infrastructure.config import load_config; from infrastructure.db.migrate import apply_migrations; apply_migrations(load_config().postgres_dsn)"
 echo "Starting GUI (Unlock → folders → backup/restore)..."
+echo "Logs: ${ROOT}/telegram-uploader.log  (tail -f telegram-uploader.log)"
 echo "Client API default. Authenticate once:"
 echo "  PYTHONPATH=src .venv/bin/python scripts/telegram_client_spike.py --login-only"
 exec "$PYTHON" -m application.gui

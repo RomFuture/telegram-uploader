@@ -1,10 +1,9 @@
 from pathlib import Path
 
 from tests.fakes.repositories import InMemoryRepositories
-from use_cases.session.create_database import CreateDatabaseUseCase
-from use_cases.session.create_session import CreateSessionUseCase
-from use_cases.session.get_session_progress import GetSessionProgressUseCase
-from use_cases.session.list_session_profiles import ListSessionProfilesUseCase
+from use_cases.session.create import CreateDatabaseUseCase, CreateSessionUseCase
+from use_cases.session.get_session_queue_snapshot import GetSessionQueueSnapshotUseCase
+from use_cases.session.list import ListSessionProfilesUseCase
 from use_cases.session.unlock_session import UnlockSessionUseCase
 
 
@@ -31,7 +30,7 @@ def test_create_session_uses_provided_key() -> None:
     assert stored.encryption_key == "user-secret"
 
 
-def test_get_session_progress_reads_display_name_from_repository(
+def test_get_session_queue_snapshot_reads_display_name_from_repository(
     tmp_path: Path,
 ) -> None:
     repos = InMemoryRepositories()
@@ -46,16 +45,16 @@ def test_get_session_progress_reads_display_name_from_repository(
         "Shown in UI",
     )
 
-    progress = GetSessionProgressUseCase(repos.source_items, repos.folders).execute(session.id)
+    snapshot = GetSessionQueueSnapshotUseCase(repos.source_items, repos.folders).execute(session.id)
 
-    assert len(progress.items) == 1
-    assert progress.items[0].display_name == "Shown in UI"
-    assert progress.items[0].display_name != source_file.name
-    assert progress.items[0].size_label == "1 B"
-    assert progress.items[0].modified_label != "—"
+    assert len(snapshot.items) == 1
+    assert snapshot.items[0].display_name == "Shown in UI"
+    assert snapshot.items[0].display_name != source_file.name
+    assert snapshot.items[0].size_label == "1 B"
+    assert snapshot.items[0].modified_label != "—"
 
 
-def test_get_session_progress_missing_file_shows_dashes() -> None:
+def test_get_session_queue_snapshot_missing_file_shows_dashes() -> None:
     from datetime import UTC, datetime
     from uuid import uuid4
 
@@ -74,10 +73,10 @@ def test_get_session_progress_missing_file_shows_dashes() -> None:
         )
     )
 
-    progress = GetSessionProgressUseCase(repos.source_items, repos.folders).execute(session.id)
+    snapshot = GetSessionQueueSnapshotUseCase(repos.source_items, repos.folders).execute(session.id)
 
-    assert progress.items[0].size_label == "—"
-    assert "12/20/25" in progress.items[0].modified_label
+    assert snapshot.items[0].size_label == "—"
+    assert "12/20/25" in snapshot.items[0].modified_label
 
 
 def test_list_profiles_returns_names() -> None:

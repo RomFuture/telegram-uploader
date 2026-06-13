@@ -1,6 +1,8 @@
 from celery import Celery
+from celery.signals import worker_process_init
 
 from infrastructure.config import load_config
+from observation.logging_setup import setup_logging
 
 QUEUE_ARCHIVE = "archive"
 QUEUE_UPLOAD = "upload"
@@ -26,15 +28,18 @@ def _make_celery() -> Celery:
     app.conf.task_serializer = "json"
     app.conf.result_serializer = "json"
     app.conf.accept_content = ["json"]
-    app.conf.worker_log_format = (
-        "[%(asctime)s: %(levelname)s/%(processName)s] %(message)s"
-    )
+    app.conf.worker_log_format = "[%(asctime)s: %(levelname)s/%(processName)s] %(message)s"
     app.conf.worker_task_log_format = (
-        "[%(asctime)s: %(levelname)s/%(processName)s]"
-        "[%(task_name)s(%(task_id)s)] %(message)s"
+        "[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s"
     )
     app.conf.worker_log_datefmt = "%Y-%m-%d %H:%M:%S"
     return app
+
+
+@worker_process_init.connect
+def _configure_worker_logging(**_kwargs: object) -> None:
+    cfg = load_config()
+    setup_logging(log_file=cfg.log_file_path, level=cfg.app_log_level)
 
 
 celery_app = _make_celery()

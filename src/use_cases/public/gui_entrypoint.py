@@ -1,3 +1,5 @@
+"""Entry point for GUI adapter: commands in, results out."""
+
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -16,27 +18,31 @@ from use_cases.public.commands import (
 )
 from use_cases.public.results import (
     FolderResult,
-    ProgressResult,
     QueueItemResult,
+    QueueItemSnapshotResult,
     RestoreResult,
+    SessionQueueSnapshotResult,
     SessionResult,
-    SourceItemProgressResult,
 )
 from use_cases.restore.check_restore_ready import CheckRestoreReadyUseCase, RestoreReadyResult
 from use_cases.restore.restore_session import RestoreSessionUseCase
-from use_cases.session.create_database import CreateDatabaseUseCase
-from use_cases.session.create_folder import CreateFolderUseCase
-from use_cases.session.create_session import CreateSessionUseCase
-from use_cases.session.get_session_progress import GetSessionProgressUseCase
-from use_cases.session.list_folders import ListFoldersUseCase
-from use_cases.session.list_session_profiles import ListSessionProfilesUseCase
+from use_cases.session.create import (
+    CreateDatabaseUseCase,
+    CreateFolderUseCase,
+    CreateSessionUseCase,
+)
+from use_cases.session.get_session_queue_snapshot import GetSessionQueueSnapshotUseCase
+from use_cases.session.list import ListFoldersUseCase, ListSessionProfilesUseCase
 from use_cases.session.manage_source_item import (
     DeleteSourceItemUseCase,
     MoveSourceItemUseCase,
     RenameSourceItemUseCase,
 )
 from use_cases.session.unlock_session import UnlockSessionUseCase
-from use_cases.telegram.test_client_api import TestClientApiResult, TestClientApiUseCase
+from use_cases.telegram.verify_storage_provider import (
+    VerifyStorageProviderResult,
+    VerifyStorageProviderUseCase,
+)
 
 
 def _session_result(
@@ -56,19 +62,19 @@ def _session_result(
 
 
 @dataclass(frozen=True, slots=True)
-class BackupApi:
+class GuiEntrypoint:
     create_session: CreateSessionUseCase
     create_database_uc: CreateDatabaseUseCase
     unlock_session_uc: UnlockSessionUseCase
     list_session_profiles: ListSessionProfilesUseCase
     list_folders_uc: ListFoldersUseCase
     create_folder_uc: CreateFolderUseCase
-    get_session_progress: GetSessionProgressUseCase
+    get_session_queue_snapshot: GetSessionQueueSnapshotUseCase
     enqueue_source_item: EnqueueSourceItemUseCase
     start_backup_pipeline: StartBackupPipelineUseCase
     restore_session_uc: RestoreSessionUseCase
     check_restore_ready_uc: CheckRestoreReadyUseCase
-    test_client_api_uc: TestClientApiUseCase
+    verify_storage_provider_uc: VerifyStorageProviderUseCase
     rename_source_item_uc: RenameSourceItemUseCase
     move_source_item_uc: MoveSourceItemUseCase
     delete_source_item_uc: DeleteSourceItemUseCase
@@ -93,9 +99,7 @@ class BackupApi:
 
     def list_folders(self, session_id: UUID) -> tuple[FolderResult, ...]:
         folders = self.list_folders_uc.execute(session_id)
-        return tuple(
-            FolderResult(folder_id=folder.id, name=folder.name) for folder in folders
-        )
+        return tuple(FolderResult(folder_id=folder.id, name=folder.name) for folder in folders)
 
     def create_folder(self, command: CreateFolderCommand) -> FolderResult:
         folder = self.create_folder_uc.execute(command.session_id, command.name)
@@ -117,12 +121,12 @@ class BackupApi:
     def start_backup(self, session_id: UUID) -> int:
         return self.start_backup_pipeline.execute(session_id)
 
-    def get_progress(self, session_id: UUID) -> ProgressResult:
-        progress = self.get_session_progress.execute(session_id)
-        return ProgressResult(
-            session_id=progress.session_id,
+    def get_queue_snapshot(self, session_id: UUID) -> SessionQueueSnapshotResult:
+        snapshot = self.get_session_queue_snapshot.execute(session_id)
+        return SessionQueueSnapshotResult(
+            session_id=snapshot.session_id,
             items=tuple(
-                SourceItemProgressResult(
+                QueueItemSnapshotResult(
                     source_item_id=item.source_item_id,
                     display_name=item.display_name,
                     status=item.status,
@@ -131,29 +135,38 @@ class BackupApi:
                     size_label=item.size_label,
                     modified_label=item.modified_label,
                 )
-                for item in progress.items
+                for item in snapshot.items
             ),
         )
 
     def restore_session(self, command: RestoreSessionCommand) -> RestoreResult:
-        paths = self.restore_session_uc.execute(command.session_id, command.dest_path)
+        paths = self.restore_session_uc.execute(
+            command.session_id,
+            command.dest_path,
+            folder_id=command.folder_id,
+        )
         return RestoreResult(
             session_id=command.session_id,
             downloaded_paths=tuple(str(path) for path in paths),
         )
 
-    def check_restore_ready(self, session_id: UUID) -> RestoreReadyResult:
-        return self.check_restore_ready_uc.execute(session_id)
+    def check_restore_ready(
+        self,
+        session_id: UUID,
+        *,
+        folder_id: UUID | None = None,
+    ) -> RestoreReadyResult:
+        return self.check_restore_ready_uc.execute(session_id, folder_id=folder_id)
 
-    def test_client_api(
+    def verify_storage_provider(
         self,
         provider: object,
         target_chat_id: str,
-    ) -> TestClientApiResult:
+    ) -> VerifyStorageProviderResult:
         from use_cases.shared.ports.storage_provider import StorageProviderPort
 
         assert isinstance(provider, StorageProviderPort)
-        return self.test_client_api_uc.execute(provider, target_chat_id)
+        return self.verify_storage_provider_uc.execute(provider, target_chat_id)
 
     def rename_source_item(self, command: RenameSourceItemCommand) -> None:
         self.rename_source_item_uc.execute(command.source_item_id, command.display_name)

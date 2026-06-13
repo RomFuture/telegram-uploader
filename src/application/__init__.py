@@ -5,7 +5,7 @@ Imports only ``use_cases.public`` (via ``backend_receiver``); no domain or infra
 
 from application.backend_receiver import (
     BackendReceiver,
-    ProgressDTO,
+    SessionQueueSnapshotDTO,
     QueueItemViewDTO,
     RestoreResultDTO,
     SessionViewDTO,
@@ -13,8 +13,8 @@ from application.backend_receiver import (
 
 __all__ = [
     "BackendReceiver",
-    "ProgressDTO",
     "QueueItemViewDTO",
     "RestoreResultDTO",
+    "SessionQueueSnapshotDTO",
     "SessionViewDTO",
 ]

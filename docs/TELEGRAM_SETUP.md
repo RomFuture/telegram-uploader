@@ -160,7 +160,21 @@ PYTHONPATH=src .venv/bin/python -m application.gui
 4. Open the target group: expect `your-display-name.7z.001` (more parts if the archive is large).
 5. **Restore Session** → pick destination folder → files extract with your database encryption key.
 
-Worker logs:
+### Logs (GUI + workers)
+
+All processes append to one file in the project/install root:
+
+```bash
+# Dev (./scripts/run.sh sets INSTALL_ROOT to repo root):
+tail -f telegram-uploader.log
+
+# Packaged install:
+tail -f /opt/telegram-uploader/telegram-uploader.log
+```
+
+Override path: `APP_LOG_FILE=/path/to/app.log` in `.env`. Level: `APP_LOG_LEVEL=DEBUG`.
+
+Workers still mirror to Docker stdout (`docker compose logs` works as before):
 
 ```bash
 docker compose logs -f celery-worker-archive-1

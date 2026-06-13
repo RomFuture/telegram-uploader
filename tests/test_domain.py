@@ -81,6 +81,27 @@ def test_not_found_errors_carry_ids() -> None:
     assert str(volume_id) in volume_error.message
 
 
+def test_required_sets_invalid_input_code_and_message() -> None:
+    error = DomainError.required("Folder name")
+    assert error.code == "invalid_input"
+    assert error.message == "Folder name is required"
+
+
+def test_folder_already_exists_carries_reason() -> None:
+    error = DomainError.folder_already_exists("Work")
+    assert error.code == "folder_already_exists"
+    assert error.message == "Folder already exists: Work"
+    assert error.reason == "Work"
+
+
+def test_folder_not_found_carries_entity_id() -> None:
+    folder_id = uuid4()
+    error = DomainError.folder_not_found(folder_id)
+    assert error.code == "folder_not_found"
+    assert error.entity_id == folder_id
+    assert str(folder_id) in error.message
+
+
 def test_verify_source_item_queued_raises_domain_error() -> None:
     session_id = domain.create_session("default", "secret").id
     item = domain.mark_source_item(
@@ -110,4 +131,3 @@ def test_public_api_exports_status_enums() -> None:
         "mark_session",
         "mark_source_item",
     }
-

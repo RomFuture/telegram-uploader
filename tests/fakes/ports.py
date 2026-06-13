@@ -71,36 +71,58 @@ class FakeStorageProvider:
         self.uploaded_display_names: list[str] = []
         self.downloaded_files: list[Path] = []
         self.requested_refs: list[str] = []
+        self._uploads: dict[str, bytes] = {}
+        self._next_message_id = 1
 
     def healthcheck(self, remote_target: str) -> bool:
         return bool(remote_target)
 
     def upload_file(self, local_path: Path, remote_target: str, display_name: str) -> UploadResult:
         self.uploaded_display_names.append(display_name)
-        file_id = f"file-{display_name}"
+        message_id = self._next_message_id
+        self._next_message_id += 1
+        document_id = 9000 + message_id
+        provider_ref = f"client:{remote_target}:{message_id}:{document_id}"
+        self._uploads[provider_ref] = local_path.read_bytes()
         return UploadResult(
             provider_name="fake",
-            external_file_id=file_id,
-            external_message_id="msg-1",
-            provider_download_ref=f"ref-{file_id}",
+            external_file_id=str(document_id),
+            external_message_id=str(message_id),
+            provider_download_ref=provider_ref,
             provider_file_name=display_name,
         )
 
     def get_file_info(self, external_file_id: str) -> ProviderFileInfo:
         self.requested_refs.append(external_file_id)
+        provider_ref = (
+            external_file_id
+            if external_file_id.startswith("client:")
+            else f"path/{external_file_id}"
+        )
         return ProviderFileInfo(
             provider_name="fake",
             external_file_id=external_file_id,
-            provider_download_ref=f"path/{external_file_id}",
+            provider_download_ref=provider_ref,
             provider_file_name=f"{external_file_id}.7z.001",
             size_bytes=10,
         )
 
     def download_file(
-        self, file_info: ProviderFileInfo, destination_path: Path, resume: bool = False
+        self,
+        file_info: ProviderFileInfo,
+        destination_path: Path,
+        resume: bool = False,
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> Path:
         destination_path.parent.mkdir(parents=True, exist_ok=True)
-        destination_path.write_bytes(b"volume-bytes")
+        content = self._uploads.get(file_info.provider_download_ref, b"volume-bytes")
+        if on_progress is not None:
+            total = len(content)
+            on_progress(0, total)
+        destination_path.write_bytes(content)
+        if on_progress is not None:
+            on_progress(len(content), len(content))
         self.downloaded_files.append(destination_path)
         return destination_path
 

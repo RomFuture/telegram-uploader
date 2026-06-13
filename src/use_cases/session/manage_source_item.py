@@ -17,19 +17,13 @@ class RenameSourceItemUseCase:
     def execute(self, source_item_id: UUID, display_name: str) -> None:
         name = display_name.strip()
         if not name:
-            raise domain.DomainError.invalid_status_transition(
-                "SourceItem",
-                "rename",
-                "non-empty display name",
-            )
+            raise domain.DomainError.required("Display name")
         record = self.source_items.get(source_item_id)
         if record is None:
             raise domain.DomainError.source_item_not_found(source_item_id)
         item = source_item_record_to_domain(record)
         updated = replace(item, display_name=name)
-        self.source_items.update(
-            domain_to_source_item_record(updated, folder_id=record.folder_id)
-        )
+        self.source_items.update(domain_to_source_item_record(updated, folder_id=record.folder_id))
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,15 +37,9 @@ class MoveSourceItemUseCase:
             raise domain.DomainError.source_item_not_found(source_item_id)
         folder = self.folders.get(folder_id)
         if folder is None or folder.session_id != record.session_id:
-            raise domain.DomainError.invalid_status_transition(
-                "SourceItem",
-                "move",
-                "folder in same session",
-            )
+            raise domain.DomainError.folder_not_found(folder_id)
         item = source_item_record_to_domain(record)
-        self.source_items.update(
-            domain_to_source_item_record(item, folder_id=folder_id)
-        )
+        self.source_items.update(domain_to_source_item_record(item, folder_id=folder_id))
 
 
 @dataclass(frozen=True, slots=True)

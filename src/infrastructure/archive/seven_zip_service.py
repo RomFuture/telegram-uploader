@@ -12,6 +12,18 @@ class SevenZipError(RuntimeError):
     """7-Zip subprocess failed (check stderr in ``__cause__`` context)."""
 
 
+def _format_extract_error(dest_dir: Path, detail: str) -> str:
+    lowered = detail.lower()
+    if "permission denied" in lowered or "errno=13" in lowered:
+        return (
+            "7z extract failed: cannot write to the restore folder "
+            f"({dest_dir}). Permission denied.\n\n"
+            "Choose a writable folder (for example ~/Restored/) or remove read-only "
+            "files that would be overwritten."
+        )
+    return f"7z extract failed: {detail}"
+
+
 def generate_archive_key(length: int = 32) -> str:
     return secrets.token_urlsafe(length)
 
@@ -132,13 +144,11 @@ class SevenZipService:
             subprocess.run(command, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as exc:
             detail = (exc.stderr or exc.stdout or "").strip() or str(exc)
-            raise SevenZipError(f"7z extract failed: {detail}") from exc
+            raise SevenZipError(_format_extract_error(dest_dir, detail)) from exc
 
         new_files = {path for path in dest_dir.iterdir() if path.is_file()} - existing_files
         if len(new_files) != 1:
-            raise SevenZipError(
-                f"expected one new file in {dest_dir}, found {len(new_files)}"
-            )
+            raise SevenZipError(f"expected one new file in {dest_dir}, found {len(new_files)}")
         return new_files.pop()
 
     def _clear_stale_volumes(

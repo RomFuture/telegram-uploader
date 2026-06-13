@@ -9,16 +9,16 @@ from uuid import UUID
 from celery import Task
 from celery.exceptions import MaxRetriesExceededError
 
-from infrastructure.bootstrap import build_worker_api
+from infrastructure.bootstrap import wire_celery_entrypoint
 from infrastructure.config import load_config
 from infrastructure.worker.celery_app import celery_app
-from use_cases.public import WorkerApi
+from use_cases.public import CeleryEntrypoint
 
 logger = logging.getLogger(__name__)
 
 
-def _worker_api() -> WorkerApi:
-    return build_worker_api(load_config())
+def get_celery_entrypoint() -> CeleryEntrypoint:
+    return wire_celery_entrypoint(load_config())
 
 
 def _run_with_failure_report(
@@ -32,24 +32,24 @@ def _run_with_failure_report(
         runner()
     except FileNotFoundError as error:
         logger.error("%s source missing %s=%s error=%s", action, stage, entity_id, error)
-        api = _worker_api()
+        entrypoint = get_celery_entrypoint()
         entity_uuid = UUID(entity_id)
         if stage == "archive":
-            api.report_archive_failure(entity_uuid)
+            entrypoint.report_archive_failure(entity_uuid)
         raise
     except Exception as error:
         try:
             raise task.retry(exc=error)
         except MaxRetriesExceededError:
             logger.error("%s exhausted retries %s=%s error=%s", action, stage, entity_id, error)
-            api = _worker_api()
+            entrypoint = get_celery_entrypoint()
             entity_uuid = UUID(entity_id)
             if stage == "archive":
-                api.report_archive_failure(entity_uuid)
+                entrypoint.report_archive_failure(entity_uuid)
             elif stage == "upload":
-                api.report_upload_failure(entity_uuid)
+                entrypoint.report_upload_failure(entity_uuid)
             elif stage == "cleanup":
-                api.report_cleanup_failure_for_volume(entity_uuid)
+                entrypoint.report_cleanup_failure_for_volume(entity_uuid)
             raise
 
 
@@ -66,7 +66,7 @@ def archive_volume(self: Task[..., dict[str, str]], source_item_id: str) -> dict
         "archive",
         source_item_id,
         "archive_volume",
-        lambda: _worker_api().process_archive(UUID(source_item_id)),
+        lambda: get_celery_entrypoint().process_archive(UUID(source_item_id)),
     )
     return {"stage": "archive", "source_item_id": source_item_id, "status": "done"}
 
@@ -84,7 +84,7 @@ def upload_volume(self: Task[..., dict[str, str]], archive_volume_id: str) -> di
         "upload",
         archive_volume_id,
         "upload_volume",
-        lambda: _worker_api().process_upload(UUID(archive_volume_id)),
+        lambda: get_celery_entrypoint().process_upload(UUID(archive_volume_id)),
     )
     return {"stage": "upload", "archive_volume_id": archive_volume_id, "status": "done"}
 
@@ -106,7 +106,7 @@ def cleanup_volume(self: Task[..., dict[str, str]], archive_volume_id: str) -> d
         "cleanup",
         archive_volume_id,
         "cleanup_volume",
-        lambda: _worker_api().process_cleanup(UUID(archive_volume_id)),
+        lambda: get_celery_entrypoint().process_cleanup(UUID(archive_volume_id)),
     )
     return {"stage": "cleanup", "archive_volume_id": archive_volume_id, "status": "done"}
 
@@ -123,7 +123,7 @@ def restore_volume(self: Task[..., dict[str, str]], archive_volume_id: str) -> d
         self.request.id,
         archive_volume_id,
     )
-    path = _worker_api().process_restore_volume(UUID(archive_volume_id))
+    path = get_celery_entrypoint().process_restore_volume(UUID(archive_volume_id))
     return {
         "stage": "restore",
         "archive_volume_id": archive_volume_id,

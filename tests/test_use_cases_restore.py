@@ -8,7 +8,7 @@ import domain as domain
 from tests.fakes.ports import FakeArchiveService, FakeStorageProvider
 from tests.fakes.repositories import InMemoryRepositories
 from use_cases.restore.restore_session import RestoreSessionUseCase
-from use_cases.session.create_session import CreateSessionUseCase
+from use_cases.session.create import CreateSessionUseCase
 from use_cases.shared.persistence import ArchiveVolumeRecord, SourceItemRecord
 
 
@@ -66,6 +66,8 @@ def test_restore_downloads_volumes_in_part_order_and_extracts_to_dest(tmp_path: 
     dest_path = tmp_path / "restored"
     restored = RestoreSessionUseCase(
         sessions=repos.sessions,
+        source_items=repos.source_items,
+        folders=repos.folders,
         archive_volumes=repos.archive_volumes,
         storage_provider=storage,
         archive_service=FakeArchiveService(),
@@ -115,6 +117,8 @@ def test_restore_raises_when_volume_missing_external_file_id(tmp_path: Path) -> 
     with pytest.raises(domain.DomainError) as error:
         RestoreSessionUseCase(
             sessions=repos.sessions,
+            source_items=repos.source_items,
+            folders=repos.folders,
             archive_volumes=repos.archive_volumes,
             storage_provider=FakeStorageProvider(),
             archive_service=FakeArchiveService(),
@@ -160,6 +164,8 @@ def test_restore_prefers_provider_download_ref(tmp_path: Path) -> None:
     storage = FakeStorageProvider()
     RestoreSessionUseCase(
         sessions=repos.sessions,
+        source_items=repos.source_items,
+        folders=repos.folders,
         archive_volumes=repos.archive_volumes,
         storage_provider=storage,
         archive_service=FakeArchiveService(),
@@ -205,6 +211,8 @@ def test_restore_rejects_legacy_bot_api_refs(tmp_path: Path) -> None:
     with pytest.raises(domain.DomainError) as exc_info:
         RestoreSessionUseCase(
             sessions=repos.sessions,
+            source_items=repos.source_items,
+            folders=repos.folders,
             archive_volumes=repos.archive_volumes,
             storage_provider=FakeStorageProvider(),
             archive_service=FakeArchiveService(),
@@ -249,6 +257,8 @@ def test_check_restore_ready_reports_legacy_volumes(tmp_path: Path) -> None:
 
     result = CheckRestoreReadyUseCase(
         archive_volumes=repos.archive_volumes,
+        source_items=repos.source_items,
+        folders=repos.folders,
         storage_provider=FakeStorageProvider(),
         target_chat_id="-1001",
     ).execute(session.id)
@@ -291,6 +301,8 @@ def test_check_restore_ready_ok_for_client_refs(tmp_path: Path) -> None:
 
     result = CheckRestoreReadyUseCase(
         archive_volumes=repos.archive_volumes,
+        source_items=repos.source_items,
+        folders=repos.folders,
         storage_provider=FakeStorageProvider(),
         target_chat_id="-1001",
     ).execute(session.id)
@@ -332,6 +344,8 @@ def test_check_restore_ready_reports_incomplete_upload(tmp_path: Path) -> None:
 
     result = CheckRestoreReadyUseCase(
         archive_volumes=repos.archive_volumes,
+        source_items=repos.source_items,
+        folders=repos.folders,
         storage_provider=FakeStorageProvider(),
         target_chat_id="-1001",
     ).execute(session.id)
@@ -346,6 +360,8 @@ def test_restore_raises_when_no_volumes(tmp_path: Path) -> None:
     with pytest.raises(domain.DomainError):
         RestoreSessionUseCase(
             sessions=repos.sessions,
+            source_items=repos.source_items,
+            folders=repos.folders,
             archive_volumes=repos.archive_volumes,
             storage_provider=FakeStorageProvider(),
             archive_service=FakeArchiveService(),
@@ -415,6 +431,8 @@ def test_check_restore_ready_ok_when_some_items_restorable(tmp_path: Path) -> No
 
     result = CheckRestoreReadyUseCase(
         archive_volumes=repos.archive_volumes,
+        source_items=repos.source_items,
+        folders=repos.folders,
         storage_provider=FakeStorageProvider(),
         target_chat_id="-1001",
     ).execute(session.id)
@@ -484,6 +502,8 @@ def test_restore_skips_incomplete_items_when_some_are_restorable(tmp_path: Path)
     storage = FakeStorageProvider()
     restored = RestoreSessionUseCase(
         sessions=repos.sessions,
+        source_items=repos.source_items,
+        folders=repos.folders,
         archive_volumes=repos.archive_volumes,
         storage_provider=storage,
         archive_service=FakeArchiveService(),
@@ -541,6 +561,8 @@ def test_restore_extracts_each_source_item_separately(tmp_path: Path) -> None:
     dest_path = tmp_path / "restored"
     restored = RestoreSessionUseCase(
         sessions=repos.sessions,
+        source_items=repos.source_items,
+        folders=repos.folders,
         archive_volumes=repos.archive_volumes,
         storage_provider=storage,
         archive_service=archive_service,
@@ -551,3 +573,58 @@ def test_restore_extracts_each_source_item_separately(tmp_path: Path) -> None:
     assert archive_service.extract_calls == 2
     assert len(storage.downloaded_files) == 2
     assert len(restored) == 2
+
+
+def test_restore_session_rejects_non_writable_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repos = InMemoryRepositories()
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
+    source_item_id = uuid4()
+    created_at = _now()
+    repos.source_items.add(
+        SourceItemRecord(
+            id=source_item_id,
+            session_id=session.id,
+            source_path="/tmp/source.bin",
+            display_name="source.bin",
+            status="completed",
+            created_at=created_at,
+        )
+    )
+    repos.archive_volumes.add(
+        ArchiveVolumeRecord(
+            id=uuid4(),
+            source_item_id=source_item_id,
+            file_name="vol.7z.001",
+            local_path="/tmp/vol.7z.001",
+            part_number=1,
+            status="uploaded",
+            external_file_id="file-1",
+            external_message_id="msg-1",
+            provider_download_ref="client:-1001:1:9001",
+            created_at=created_at,
+        )
+    )
+
+    dest_path = tmp_path / "readonly"
+    dest_path.mkdir()
+
+    def deny_write(_path, _mode: int) -> bool:
+        return False
+
+    monkeypatch.setattr("use_cases.restore.dest_path.os.access", deny_write)
+
+    with pytest.raises(domain.DomainError) as exc_info:
+        RestoreSessionUseCase(
+            sessions=repos.sessions,
+            source_items=repos.source_items,
+            folders=repos.folders,
+            archive_volumes=repos.archive_volumes,
+            storage_provider=FakeStorageProvider(),
+            archive_service=FakeArchiveService(),
+            staging_dir=tmp_path / "staging",
+            target_chat_id="-1001",
+        ).execute(session.id, dest_path)
+
+    assert exc_info.value.code == "restore_destination_not_writable"

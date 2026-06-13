@@ -1,6 +1,7 @@
 import json
 import secrets
 import socket
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -72,7 +73,12 @@ class TelegramProviderV1:
         )
 
     def download_file(
-        self, file_info: ProviderFileInfo, destination_path: Path, resume: bool = False
+        self,
+        file_info: ProviderFileInfo,
+        destination_path: Path,
+        resume: bool = False,
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> Path:
         file_url = (
             f"{self.base_url.rstrip('/')}/file/bot{self.bot_token}/"
@@ -81,9 +87,15 @@ class TelegramProviderV1:
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         mode = "ab" if resume else "wb"
         req = request.Request(file_url, method="GET")
+        total_bytes = file_info.size_bytes or 0
+        if on_progress is not None:
+            on_progress(0, total_bytes)
         with request.urlopen(req, timeout=self.request_timeout_seconds) as response:
+            payload = response.read()
             with destination_path.open(mode) as output_file:
-                output_file.write(response.read())
+                output_file.write(payload)
+        if on_progress is not None:
+            on_progress(len(payload), len(payload) if len(payload) > 0 else total_bytes)
         return destination_path
 
     def classify_error(self, error_value: Exception) -> ClassifiedProviderError:
@@ -148,10 +160,7 @@ class TelegramProviderV1:
         parts.append(b"--" + b_bound + crlf)
         fn = safe_filename.encode("utf-8")
         parts.append(
-            b'Content-Disposition: form-data; name="document"; filename="'
-            + fn
-            + b'"'
-            + crlf
+            b'Content-Disposition: form-data; name="document"; filename="' + fn + b'"' + crlf
         )
         parts.append(b"Content-Type: application/octet-stream" + crlf)
         parts.append(crlf)

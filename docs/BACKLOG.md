@@ -75,7 +75,8 @@ docker compose logs -f celery-worker-archive-1
 - [ ] **Onboarding automation** — GUI wizard: API id/hash, bot, group id, `.env`; позже Client API login ([README](../README.md#onboarding-automation-planned))
 - [ ] **Client API setup guide (beginner-friendly)** — переписать [CLIENT_API_SETUP.md](CLIENT_API_SETUP.md) «нативно»: без CLI-жаргона, пошагово «куда нажать / что скопировать», скриншоты my.telegram.org и Telegram, что такое session file простыми словами, отдельный блок «если ничего не понятно»; целевая аудитория — пользователь без опыта в терминале. **Gate:** человек без dev-навыков проходит auth + первый backup по одному документу (Roman проверяет на «чистом» знакомом).
 - [x] Backup happy path (Client API default)
-- [ ] Restore smoke на Client API
+- [x] Test Client API upload + download round-trip (Settings)
+- [ ] **GUI Restore Session smoke** — backup completed item → Restore → файл в `dest_path` (Roman)
 
 **Gate P-demo:** друг (или ты на чистой машине) повторяет **одну команду** после clone; CI на `main` зелёный; smoke backup пройден.
 
@@ -167,7 +168,7 @@ docker compose logs -f celery-worker-archive-1
 ### P0.1 — `use_cases` (первый проход)
 
 - [ ] Аудит пакета: дубли, лишние зависимости, согласованность портов и `*Record`
-- [ ] Выровнять restore/upload ref helpers под будущий Client API (см. [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md))
+- [x] Выровнять restore/upload ref helpers под Client API (`client:` only, `has_legacy_bot_volumes`) — [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md)
 - [x] Pipeline rules вынесены из `domain`: `backup/gates.py`, `backup/idempotency.py`, `restore/refs.py`
 - [x] Idempotency policy в `use_cases/backup/idempotency.py`
 - [x] Failed-status wiring в Celery `tasks.py` (UC-4)
@@ -180,9 +181,9 @@ docker compose logs -f celery-worker-archive-1
 
 - [x] `TelegramClientProvider` + `TELEGRAM_PROVIDER` switch — [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md)
 - [ ] Deprecate Bot API после стабильного client restore smoke
-- [ ] Structured logging (минимум — единый формат в worker/bootstrap)
+- [x] Structured logging (file + unified format) — `telegram-uploader.log`; correlation `session_id` — позже
 
-**Gate:** `docker compose up` + полный backup smoke; restore download без 404 (после Client API).
+**Gate:** `docker compose up` + полный backup smoke; restore download без 404 — **Test Client API ✅; GUI Restore Session — Roman**.
 
 ### P0.3 — `application` + GUI
 
@@ -197,12 +198,12 @@ docker compose logs -f celery-worker-archive-1
 
 ## P1 — Restore end-to-end (product)
 
-После Client API smoke:
-
 - [x] Скачать volumes + 7z extract в `dest_path` (UC-7)
+- [x] Test Client API upload + download round-trip (Settings / opt-in integration test)
+- [ ] **GUI Restore Session smoke** (Roman) — полный цикл backup → restore → файл в папке
 - [ ] Resume downloads (nice to have)
 
-**Gate:** Restore Session → оригинальный файл в выбранной папке; ручная проверка.
+**Gate:** Restore Session → оригинальный файл в выбранной папке; **Roman ручная проверка** (Test Client API — предварительный gate download).
 
 ---
 
@@ -221,6 +222,7 @@ docker compose logs -f celery-worker-archive-1
   3. Создать виртуальную папку **`Restored`** (или «Восстановленное») и импортировать записи туда.
   4. В таблице такие файлы помечать **жёлтым замочком** (`external` / «imported from Telegram») — не были добавлены через Add File.
   5. Пользователь может переименовать / перенести / удалить / повторно backup как обычный item.
+- [ ] **Cross-session import (Client API)** — восстанавливать файлы из **другой** backup-группы или чужой session и добавлять в **свою** session (расширение Import выше). До скачки: `source_item` без локального файла → Size/Modified = «—» в `GetSessionProgressUseCase`. После скачки/импорта: прописать `source_path` на файл на диске **или** сохранить `size_bytes` / mtime в БД → таблица подхватит размер при Refresh. **Сейчас не проработано:** `RestoreSessionUseCase` пишет в `dest_path`, но **не связывает** восстановленный файл с записью в очереди.
 - [ ] **Restore Session UX** — отдельная пустая папка по умолчанию; restore всех completed items по одному extract на файл (частично сделано в UC-7).
 
 **Gate:** в группе есть backup без записи в GUI → Import → файл в папке «Restored» с замочком → rename/move работает.
@@ -233,10 +235,17 @@ KeePassXC-style layout + theme fix — **первая итерация** (2026-0
 
 ### Запланировано
 
-- [ ] **Второй проход по GUI** — контраст и ttk maps (Settings tabs, Combobox popup, TButton states), toolbar/icons, spacing, unlock card, progress drawer, единая типографика; pixel-perfect KeePassXC не цель, но **читаемость и целостность** — да.
+- [ ] **Progress bar (переделать)** — нижний drawer сейчас **не отражает ход backup**:
+  - `ProgressDrawer` (`drawer.py`) — только `indeterminate` анимация; после `Start Backup` сразу `show_result` → бар останавливается и скрывается, хотя workers ещё работают.
+  - Нет polling `get_session_progress` во время pipeline; пользователь видит «Backup started» / «Enqueued N item(s)», но не прогресс по файлам (`queued` → `archiving` → `uploading` → `completed`).
+  - **Цель:** determinate bar или пошаговый статус (N/M файлов, текущий этап); обновление по Refresh или таймеру, пока есть items in progress; idle когда всё `completed` / `failed`.
+  - Затронет: `drawer.py`, `app.py` (`_on_start_backup`, `_refresh_queue`), возможно `ProgressDTO` / `GetSessionProgressUseCase`.
+- [ ] **Второй проход по GUI** — контраст и ttk maps (Settings tabs, Combobox popup, TButton states), toolbar/icons, spacing, unlock card, progress drawer layout, единая типографика; pixel-perfect KeePassXC не цель, но **читаемость и целостность** — да.
 - [ ] Проверка на установленном `.deb` (Ubuntu 24.04): все экраны читаемы, нет белого на белом, layout стабилен при resize.
 
-**Gate:** Roman smoke после `.deb` install — Unlock, vault, Settings, context menu; resize окна без артефактов.
+**Gate (progress bar):** Start Backup с 2+ файлами → бар движется/считает до `completed` без ручного Refresh; smoke на `.deb`.
+
+**Gate (visual polish):** Roman smoke после `.deb` install — Unlock, vault, Settings, context menu; resize окна без артефактов.
 
 ---
 
@@ -254,7 +263,7 @@ KeePassXC-style layout + theme fix — **первая итерация** (2026-0
 - [x] `import-linter` + `.importlinter` (UC-8)
 - [x] `.github/workflows/ci.yml` — ruff, mypy, pytest, lint-imports
 - [ ] `src/observation/health.py` (optional) — postgres, redis, telegram session
-- [ ] `logs/` в `.gitignore` для session logs
+- [x] `telegram-uploader.log` in `.gitignore` (unified app log)
 
 Уже есть: `pytest`, `ruff`, `mypy`, `tests/test_layer_boundaries.py`, Celery log timestamps.
 
@@ -297,6 +306,19 @@ KeePassXC-style layout + theme fix — **первая итерация** (2026-0
 - Telegram topics (`message_thread_id`) — [INTERNAL_SPEC.md](INTERNAL_SPEC.md)
 - Auto-moving user source files into service directory
 - Max / VK providers (port ready, no adapter)
+
+---
+
+## Open fixes (smoke 2026-06-12)
+
+Подробности: [refactor/CHANGES.md](refactor/CHANGES.md).
+
+- [ ] **FIX-1** — Progress bar «мёртвый» при backup: нет polling `get_session_progress` (P1.2)
+- [ ] **FIX-2** — `database is locked` — **переоценено:** два окна GUI на одном `session.session`; не primary blocker
+- [ ] **FIX-3** — Restore в background thread — **partial** (`app.py`); progress animation TBD
+- [ ] **FIX-4** — 7z extract `Permission denied` — **fix landed** (dest validation + messages); Roman smoke TBD
+
+**Workaround smoke:** одно окно GUI; restore в **пустую** папку в `$HOME` (не под `/opt/telegram-uploader/`).
 
 ---
 

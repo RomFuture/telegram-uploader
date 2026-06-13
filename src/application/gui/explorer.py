@@ -8,9 +8,11 @@ from pathlib import Path
 from tkinter import filedialog, simpledialog, ttk
 from uuid import UUID
 
-from application.backend_receiver import FolderViewDTO, ProgressDTO, QueueItemViewDTO
+from application.backend_receiver import FolderViewDTO, QueueItemViewDTO, SessionQueueSnapshotDTO
 from application.gui.context_menu import prompt_rename, show_file_context_menu
 from application.gui.theme import COLORS
+
+ALL_FILES_FOLDER_NAME = "All files"
 
 
 class ExplorerView(ttk.Frame):
@@ -49,7 +51,7 @@ class ExplorerView(ttk.Frame):
         self._on_rename = on_rename
         self._on_move = on_move
         self._on_delete = on_delete
-        self._progress: ProgressDTO | None = None
+        self._queue_snapshot: SessionQueueSnapshotDTO | None = None
         self._items_by_id: dict[str, QueueItemViewDTO] = {}
 
         toolbar = ttk.Frame(self, padding=(0, 0, 0, 8))
@@ -60,21 +62,16 @@ class ExplorerView(ttk.Frame):
         )
 
         ttk.Button(toolbar, text="Settings", command=self._on_settings).pack(side="right")
-        ttk.Button(toolbar, text="Lock", command=self._on_lock).pack(
-            side="right", padx=(0, 6)
-        )
-        ttk.Button(toolbar, text="Restore", command=self._on_restore).pack(
-            side="right", padx=(0, 6)
-        )
-        ttk.Button(toolbar, text="Refresh", command=self._on_refresh).pack(
-            side="right", padx=(0, 6)
-        )
-        ttk.Button(toolbar, text="Backup", command=self._on_start_backup).pack(
-            side="right", padx=(0, 6)
-        )
-        ttk.Button(toolbar, text="Add file", command=self._handle_add_file).pack(
-            side="right", padx=(0, 6)
-        )
+        self._btn_lock = ttk.Button(toolbar, text="Lock", command=self._on_lock)
+        self._btn_lock.pack(side="right", padx=(0, 6))
+        self._btn_restore = ttk.Button(toolbar, text="Restore", command=self._on_restore)
+        self._btn_restore.pack(side="right", padx=(0, 6))
+        self._btn_refresh = ttk.Button(toolbar, text="Refresh", command=self._on_refresh)
+        self._btn_refresh.pack(side="right", padx=(0, 6))
+        self._btn_backup = ttk.Button(toolbar, text="Backup", command=self._on_start_backup)
+        self._btn_backup.pack(side="right", padx=(0, 6))
+        self._btn_add_file = ttk.Button(toolbar, text="Add file", command=self._handle_add_file)
+        self._btn_add_file.pack(side="right", padx=(0, 6))
 
         paned = ttk.Panedwindow(self, orient="horizontal")
         paned.pack(fill="both", expand=True)
@@ -131,6 +128,18 @@ class ExplorerView(ttk.Frame):
             anchor="w", pady=(6, 0)
         )
 
+    def selected_folder_id(self) -> UUID | None:
+        return self._selected_folder_id
+
+    def selected_folder_name(self) -> str | None:
+        for folder in self._folders:
+            if folder.folder_id == self._selected_folder_id:
+                return folder.name
+        return None
+
+    def is_all_files_selected(self) -> bool:
+        return self.selected_folder_name() == ALL_FILES_FOLDER_NAME
+
     def set_folders(self, folders: tuple[FolderViewDTO, ...]) -> None:
         self._folders = list(folders)
         if self._selected_folder_id is None and folders:
@@ -141,7 +150,7 @@ class ExplorerView(ttk.Frame):
         self._selected_folder_id = folder_id
         self._render_folder_list()
         if self._progress is not None:
-            self.render_progress(self._progress)
+            self.render_queue_snapshot(self._queue_snapshot)
 
     def _render_folder_list(self) -> None:
         self._folder_list.delete(0, "end")
@@ -161,7 +170,7 @@ class ExplorerView(ttk.Frame):
         self._selected_folder_id = folder.folder_id
         self._on_folder_selected(folder.folder_id)
         if self._progress is not None:
-            self.render_progress(self._progress)
+            self.render_queue_snapshot(self._queue_snapshot)
 
     def _handle_new_folder(self) -> None:
         name = simpledialog.askstring(
@@ -217,28 +226,21 @@ class ExplorerView(ttk.Frame):
             on_delete=self._on_delete,
         )
 
-    def render_progress(self, progress: ProgressDTO) -> None:
-        self._progress = progress
+    def render_queue_snapshot(self, snapshot: SessionQueueSnapshotDTO) -> None:
+        self._queue_snapshot = snapshot
         self._items_by_id.clear()
         for row_id in self._tree.get_children():
             self._tree.delete(row_id)
 
-        visible_items = progress.items
-        hidden_count = 0
-        unassigned_count = 0
-        if self._selected_folder_id is not None:
+        visible_items = snapshot.items
+        folder_name = self.selected_folder_name()
+        if self._selected_folder_id is not None and folder_name != ALL_FILES_FOLDER_NAME:
             visible_items = tuple(
-                item
-                for item in progress.items
-                if item.folder_id == self._selected_folder_id or item.folder_id is None
+                item for item in snapshot.items if item.folder_id == self._selected_folder_id
             )
-            unassigned_count = sum(1 for item in progress.items if item.folder_id is None)
-            hidden_count = sum(
-                1
-                for item in progress.items
-                if item.folder_id is not None
-                and item.folder_id != self._selected_folder_id
-            )
+            hidden_count = len(snapshot.items) - len(visible_items)
+        else:
+            hidden_count = 0
 
         for item in visible_items:
             status = item.status.lower()
@@ -273,10 +275,17 @@ class ExplorerView(ttk.Frame):
         if visible_items:
             self._status_var.set(f"{len(visible_items)} file(s) — right-click for actions")
         elif hidden_count > 0:
-            self._status_var.set(
-                f"Folder is empty — {hidden_count} file(s) in other folders"
-            )
-        elif unassigned_count > 0:
-            self._status_var.set(f"{unassigned_count} unassigned file(s)")
+            self._status_var.set(f"Folder is empty — {hidden_count} file(s) in other folders")
         else:
             self._status_var.set("No files in this folder")
+
+    def set_toolbar_enabled(self, enabled: bool) -> None:
+        state = tk.NORMAL if enabled else tk.DISABLED
+        for button in (
+            self._btn_add_file,
+            self._btn_backup,
+            self._btn_refresh,
+            self._btn_restore,
+            self._btn_lock,
+        ):
+            button.configure(state=state)

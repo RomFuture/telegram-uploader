@@ -1,15 +1,20 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from infrastructure.bootstrap import build_backup_api, build_storage_provider, build_worker_api
+from infrastructure.bootstrap import (
+    build_storage_provider,
+    wire_celery_entrypoint,
+    wire_gui_entrypoint,
+)
 from infrastructure.config import AppConfig
-from use_cases.public import BackupApi, WorkerApi
+from use_cases.public import CeleryEntrypoint, GuiEntrypoint
 
 
 def _test_config() -> AppConfig:
     return AppConfig(
         app_env="test",
         app_log_level="INFO",
+        log_file_path=Path("/tmp/telegram_uploader/telegram-uploader.log"),
         postgres_dsn="postgresql://test:test@localhost:5432/test",
         redis_url="redis://localhost:6379/0",
         telegram_provider="bot",
@@ -28,7 +33,7 @@ def _test_config() -> AppConfig:
 @patch("infrastructure.bootstrap.build_storage_provider")
 @patch("infrastructure.bootstrap.CeleryTaskQueue")
 @patch("infrastructure.bootstrap.ArchiveServiceAdapter")
-def test_build_backup_api_returns_backup_api(
+def test_wire_gui_entrypoint_returns_gui_entrypoint(
     mock_archive_adapter: MagicMock,
     mock_task_queue: MagicMock,
     mock_provider: MagicMock,
@@ -40,9 +45,9 @@ def test_build_backup_api_returns_backup_api(
     mock_repos.archive_volumes = MagicMock()
     mock_repos_factory.return_value = mock_repos
 
-    api = build_backup_api(_test_config())
+    entrypoint = wire_gui_entrypoint(_test_config())
 
-    assert isinstance(api, BackupApi)
+    assert isinstance(entrypoint, GuiEntrypoint)
     mock_repos_factory.assert_called_once()
     mock_provider.assert_called_once()
     mock_task_queue.assert_called_once()
@@ -53,7 +58,7 @@ def test_build_backup_api_returns_backup_api(
 @patch("infrastructure.bootstrap.build_storage_provider")
 @patch("infrastructure.bootstrap.CeleryTaskQueue")
 @patch("infrastructure.bootstrap.ArchiveServiceAdapter")
-def test_build_worker_api_returns_worker_api(
+def test_wire_celery_entrypoint_returns_celery_entrypoint(
     mock_archive_adapter: MagicMock,
     mock_task_queue: MagicMock,
     mock_provider: MagicMock,
@@ -65,9 +70,9 @@ def test_build_worker_api_returns_worker_api(
     mock_repos.archive_volumes = MagicMock()
     mock_repos_factory.return_value = mock_repos
 
-    api = build_worker_api(_test_config())
+    entrypoint = wire_celery_entrypoint(_test_config())
 
-    assert isinstance(api, WorkerApi)
+    assert isinstance(entrypoint, CeleryEntrypoint)
     mock_repos_factory.assert_called_once()
     mock_provider.assert_called_once()
     mock_task_queue.assert_called_once()
@@ -85,6 +90,7 @@ def test_build_storage_provider_client_without_credentials_uses_stub() -> None:
     cfg = AppConfig(
         app_env="test",
         app_log_level="INFO",
+        log_file_path=Path("/tmp/telegram_uploader/telegram-uploader.log"),
         postgres_dsn="postgresql://test:test@localhost:5432/test",
         redis_url="redis://localhost:6379/0",
         telegram_provider="client",
@@ -107,6 +113,7 @@ def test_build_storage_provider_uses_client_when_configured() -> None:
     cfg = AppConfig(
         app_env="test",
         app_log_level="INFO",
+        log_file_path=Path("/tmp/telegram_uploader/telegram-uploader.log"),
         postgres_dsn="postgresql://test:test@localhost:5432/test",
         redis_url="redis://localhost:6379/0",
         telegram_provider="client",

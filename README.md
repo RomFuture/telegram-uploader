@@ -6,7 +6,7 @@ Docs: [PROJECT.md](docs/PROJECT.md) (architecture + refactor plan) · [BACKLOG.m
 
 ## Backup flow
 
-You pick files in the GUI (English UI; `display_name` lands at enqueue). Workers encrypt and split archives with 7z, upload volumes to a Telegram group via **Client API (MTProto)**, and record state in PostgreSQL. Celery runs archive, upload, cleanup, and restore queues. The GUI calls `BackupApi` through `BackendReceiver`. Restore download on Client API is still being validated end-to-end.
+You pick files in the GUI (English UI; `display_name` lands at enqueue). Workers encrypt and split archives with 7z, upload volumes to a Telegram group via **Client API (MTProto)**, and record state in PostgreSQL. Celery runs archive, upload, cleanup, and restore queues. The GUI calls `GuiEntrypoint` through `BackendReceiver`. Restore download on Client API is still being validated end-to-end.
 
 ## Status (June 2026)
 
@@ -15,7 +15,7 @@ You pick files in the GUI (English UI; `display_name` lands at enqueue). Workers
 | Onion layers: `domain` → `use_cases` → `infrastructure` → `application` | Done |
 | Phase 1 refactor (R2–R8, public API) | Done |
 | Backup: GUI → workers → Telegram → `completed` | Done (Client API default) |
-| Client API: sign-in, Test Client API, upload | Done |
+| Client API: sign-in, Test Client API, upload + download | Done |
 | Restore download (Client API) | In progress ([migration](docs/TELEGRAM_CLIENT_API_MIGRATION.md)) |
 | Restore extract (7z → original file) | Done |
 | Packaging `.deb` + upgrade docs | Done (0.1.9) |
@@ -58,7 +58,7 @@ Then run:
 
 The script starts Postgres, Redis, Celery workers, applies migrations, and opens the Tkinter GUI. Sign in via **Settings → Sign in to Telegram…** or `telegram-uploader-login` (packaged install).
 
-Smoke: Start Session → Add File → Start Backup → Refresh Progress. Volumes should appear in your Telegram group as `display-name.7z.001`. See [TELEGRAM_SETUP.md § First backup](docs/TELEGRAM_SETUP.md#6-first-backup) and worker logs: `docker compose logs -f celery-worker-archive-1`.
+Smoke: Start Session → Add File → Start Backup → Refresh Progress. Volumes should appear in your Telegram group as `display-name.7z.001`. See [TELEGRAM_SETUP.md § First backup](docs/TELEGRAM_SETUP.md#6-first-backup). **Logs:** `tail -f telegram-uploader.log` (GUI + workers; see [TELEGRAM_SETUP.md § Logs](docs/TELEGRAM_SETUP.md#logs-gui--workers)).
 
 ## Install from .deb (Ubuntu 24.04 amd64)
 
@@ -132,7 +132,7 @@ This starts Postgres, Redis, Celery workers (Docker), applies DB migrations, and
 3. **Settings → General** — **Target chat ID** = backup group id (`-100…`).
 4. **Save**.
 5. **Sign in to Telegram…** (in Settings) **or** run `telegram-uploader-login` in a terminal (phone + code, once).
-6. **Test Client API** — should upload a small test file to your group.
+6. **Test Client API** — uploads and downloads a small test file from your group.
 7. **Add file → Backup** — first real backup.
 
 Config and session persist under `~/.config/telegram-uploader/`. Application files: `/opt/telegram-uploader/`.
@@ -265,7 +265,7 @@ docker compose logs -f celery-worker-archive-1
 |------|-------|
 | Settings → Save → `~/.config/telegram-uploader/.env` | Done |
 | GUI / CLI sign-in (`telegram-uploader-login`) | Done |
-| Test Client API in Settings | Done |
+| Test Client API in Settings (upload + download) | Done |
 | Beginner-friendly setup guide (screenshots, no terminal) | Open ([BACKLOG](docs/BACKLOG.md)) |
 
 ### P-demo

@@ -6,10 +6,18 @@ from pathlib import Path
 from infrastructure.paths import default_cache_dir, session_path_for_use
 
 
+def default_log_file_path() -> Path:
+    install_root = getenv("INSTALL_ROOT", "").strip()
+    if install_root:
+        return Path(install_root) / "telegram-uploader.log"
+    return Path.cwd() / "telegram-uploader.log"
+
+
 @dataclass(frozen=True, slots=True)
 class AppConfig:
     app_env: str
     app_log_level: str
+    log_file_path: Path
     postgres_dsn: str
     redis_url: str
     telegram_provider: str
@@ -72,9 +80,11 @@ def load_config() -> AppConfig:
     raw_cache_dir = getenv("ARCHIVE_CACHE_DIR", str(default_cache_dir())).strip()
     raw_api_id = getenv("TELEGRAM_API_ID", "").strip()
     raw_session_path = getenv("TELEGRAM_SESSION_PATH", "").strip()
+    raw_log_file = getenv("APP_LOG_FILE", "").strip()
     return AppConfig(
         app_env=getenv("APP_ENV", "development"),
         app_log_level=getenv("APP_LOG_LEVEL", "INFO"),
+        log_file_path=Path(raw_log_file) if raw_log_file else default_log_file_path(),
         postgres_dsn=f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}",
         redis_url=f"redis://{redis_host}:{redis_port}/{redis_db}",
         telegram_provider=getenv("TELEGRAM_PROVIDER", "client").strip().lower(),

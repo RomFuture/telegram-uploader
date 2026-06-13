@@ -46,6 +46,8 @@ class ProcessUploadVolumeUseCase:
             remote_target=self.remote_target,
             display_name=uploading.file_name,
         )
+        # Client API stores provider_download_ref as client:{chat}:{msg}:{doc}.
+        # Restore accepts only client: refs; legacy Bot API backups require re-upload.
 
         uploaded = domain.mark_archive_volume_uploaded(
             uploading,

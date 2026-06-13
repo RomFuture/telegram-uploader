@@ -6,8 +6,7 @@ import pytest
 import domain as domain
 from tests.fakes.repositories import InMemoryRepositories
 from use_cases.backup.enqueue_source_item import EnqueueSourceItemUseCase
-from use_cases.session.create_database import CreateDatabaseUseCase
-from use_cases.session.create_folder import CreateFolderUseCase
+from use_cases.session.create import CreateDatabaseUseCase, CreateFolderUseCase
 from use_cases.session.manage_source_item import (
     DeleteSourceItemUseCase,
     MoveSourceItemUseCase,
@@ -43,5 +42,6 @@ def test_rename_move_delete_source_item(tmp_path: Path) -> None:
 
 def test_rename_rejects_empty_name() -> None:
     repos = InMemoryRepositories()
-    with pytest.raises(domain.DomainError):
+    with pytest.raises(domain.DomainError) as exc:
         RenameSourceItemUseCase(repos.source_items).execute(uuid4(), "   ")
+    assert exc.value.code == "invalid_input"

@@ -3,11 +3,18 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-import domain as domain
-from use_cases.restore.refs import is_volume_restorable, restorable_source_item_ids
+from use_cases.restore.refs import (
+    has_legacy_bot_volumes,
+    is_volume_restorable,
+    restorable_source_item_ids,
+)
+from use_cases.restore.scope import restorable_source_item_ids_for_folder
+from use_cases.shared.folders import is_default_folder_name
 from use_cases.shared.ports.storage_provider import StorageProviderPort
 from use_cases.shared.repositories.archive_volume import ArchiveVolumeRepository
+from use_cases.shared.repositories.folder import FolderRepository
 from use_cases.shared.repositories.loading import map_archive_volumes
+from use_cases.shared.repositories.source_item import SourceItemRepository
 
 _STALE_BACKUP_MESSAGE = (
     "No restorable backups yet.\n\n"
@@ -43,10 +50,17 @@ class RestoreReadyResult:
 @dataclass(frozen=True, slots=True)
 class CheckRestoreReadyUseCase:
     archive_volumes: ArchiveVolumeRepository
+    source_items: SourceItemRepository
+    folders: FolderRepository
     storage_provider: StorageProviderPort
     target_chat_id: str
 
-    def execute(self, session_id: UUID) -> RestoreReadyResult:
+    def execute(
+        self,
+        session_id: UUID,
+        *,
+        folder_id: UUID | None = None,
+    ) -> RestoreReadyResult:
         records = self.archive_volumes.list_by_session(session_id)
         if not records:
             return RestoreReadyResult(
@@ -55,18 +69,31 @@ class CheckRestoreReadyUseCase:
             )
 
         volumes = map_archive_volumes(records)
-        restorable_items = restorable_source_item_ids(volumes, self.target_chat_id)
+        all_restorable = restorable_source_item_ids(volumes, self.target_chat_id)
+        folder_name = self._folder_name(folder_id)
+        source_item_records = self.source_items.list_by_session(session_id)
+        restorable_items = restorable_source_item_ids_for_folder(
+            all_restorable=all_restorable,
+            source_items=source_item_records,
+            folder_id=folder_id,
+            folder_name=folder_name,
+        )
         incomplete_volume_count = sum(
             1 for volume in volumes if not is_volume_restorable(volume, self.target_chat_id)
         )
-        has_legacy_volumes = any(
-            volume.status == domain.ArchiveVolumeStatus.UPLOADED
-            and volume.provider_download_ref
-            and not volume.provider_download_ref.startswith("client:")
-            for volume in volumes
-        )
+        has_legacy_volumes = has_legacy_bot_volumes(volumes)
 
         if not restorable_items:
+            if all_restorable and folder_id is not None and not is_default_folder_name(
+                folder_name or ""
+            ):
+                return RestoreReadyResult(
+                    ready=False,
+                    message=(
+                        f"No completed backups in {folder_name or 'this folder'}.\n\n"
+                        "Select All files or a folder with backed-up files."
+                    ),
+                )
             if has_legacy_volumes:
                 return RestoreReadyResult(
                     ready=False,
@@ -96,12 +123,23 @@ class CheckRestoreReadyUseCase:
                 message=_HEALTHCHECK_FAIL_MESSAGE,
             )
 
-        message = "Ready to restore."
+        scope_label = (
+            "all files"
+            if folder_id is None or is_default_folder_name(folder_name or "")
+            else f"folder {folder_name!r}"
+        )
+        message = f"Ready to restore {len(restorable_items)} file(s) from {scope_label}."
         if incomplete_volume_count > 0:
             message = (
-                f"Ready to restore {len(restorable_items)} file(s).\n\n"
+                f"Ready to restore {len(restorable_items)} file(s) from {scope_label}.\n\n"
                 f"{incomplete_volume_count} unfinished archive part(s) from older "
                 "failed backups will be skipped.\n"
                 "Click Start Backup to retry those files."
             )
         return RestoreReadyResult(ready=True, message=message)
+
+    def _folder_name(self, folder_id: UUID | None) -> str | None:
+        if folder_id is None:
+            return None
+        folder = self.folders.get(folder_id)
+        return folder.name if folder is not None else None

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -10,13 +12,19 @@ from uuid import UUID
 from application.backend_receiver import (
     BackendReceiver,
     FolderViewDTO,
-    ProgressDTO,
+    SessionQueueSnapshotDTO,
+    RestoreResultDTO,
     SessionViewDTO,
 )
 from application.env_store import save_settings_env
 from application.gui.drawer import ProgressDrawer
 from application.gui.errors import format_user_error
 from application.gui.explorer import ExplorerView
+from application.gui.restore_dest import (
+    default_restore_dir,
+    is_under_install_root,
+    readonly_existing_files,
+)
 from application.gui.settings import SettingsDialog, TestClientApiDialogResult
 from application.gui.theme import apply_theme
 from application.gui.unlock import UnlockScreen
@@ -42,6 +50,10 @@ class BackupApp:
         self._explorer: ExplorerView | None = None
         self._drawer: ProgressDrawer | None = None
         self._session_label: ttk.Label | None = None
+        self._restore_running = False
+        self._restore_tick_job: str | None = None
+        self._restore_tick_start: float | None = None
+        self._restore_dest: Path | None = None
 
         self._show_unlock()
 
@@ -240,7 +252,7 @@ class BackupApp:
 
         self._drawer.show_working("Starting backup", "Sending queued items to workers")
         try:
-            progress = self._receiver.get_session_progress(session_id)
+            snapshot = self._receiver.get_session_queue_snapshot(session_id)
             enqueued = self._receiver.start_backup(session_id)
         except Exception as error:
             self._drawer.show_result("Backup failed", format_user_error("Backup", error))
@@ -252,7 +264,7 @@ class BackupApp:
             return
 
         if enqueued == 0:
-            status_lines = _format_item_status_summary(progress)
+            status_lines = _format_item_status_summary(snapshot)
             detail = (
                 "No queued files were sent to workers.\n\n"
                 f"{status_lines}\n\n"
@@ -269,36 +281,120 @@ class BackupApp:
         self._refresh_queue()
 
     def _on_restore(self) -> None:
+        if self._restore_running:
+            return
+
         session_id = self._require_session()
         if session_id is None or self._drawer is None:
             return
 
-        try:
-            preflight = self._receiver.check_restore_ready(session_id)
-        except Exception as error:
-            detail = format_user_error("Restore check", error)
-            self._drawer.show_result("Restore unavailable", detail)
-            messagebox.showerror("Restore unavailable", detail, parent=self._root)
+        dest = self._pick_restore_destination()
+        if dest is None:
             return
 
-        if not preflight.ready:
-            self._drawer.show_result("Restore unavailable", preflight.message)
-            messagebox.showwarning(
-                "Restore unavailable",
-                preflight.message,
-                parent=self._root,
-            )
-            return
+        folder_id = self._explorer.selected_folder_id() if self._explorer is not None else None
+        self._begin_restore_ui(dest)
 
-        dest_path = filedialog.askdirectory(title="Select restore destination")
+        def worker() -> None:
+            try:
+                preflight = self._receiver.check_restore_ready(session_id, folder_id=folder_id)
+            except Exception as error:
+                detail = format_user_error("Restore check", error)
+                self._root.after(0, lambda: self._finish_restore_failed(detail))
+                return
+            if not preflight.ready:
+                self._root.after(
+                    0,
+                    lambda: self._finish_restore_failed(preflight.message, warning=True),
+                )
+                return
+            try:
+                result = self._receiver.request_restore(
+                    session_id,
+                    dest,
+                    folder_id=folder_id,
+                )
+            except Exception as error:
+                detail = format_user_error("Restore", error)
+                self._root.after(0, lambda: self._finish_restore_failed(detail))
+                return
+            self._root.after(0, lambda: self._finish_restore_success(result, dest))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _begin_restore_ui(self, dest: Path) -> None:
+        self._restore_running = True
+        self._restore_dest = dest
+        self._restore_tick_start = time.monotonic()
+        if self._explorer is not None:
+            self._explorer.set_toolbar_enabled(False)
+        self._update_restore_progress()
+        self._root.update_idletasks()
+
+    def _update_restore_progress(self) -> None:
+        if not self._restore_running or self._drawer is None or self._restore_dest is None:
+            return
+        elapsed = int(time.monotonic() - (self._restore_tick_start or time.monotonic()))
+        self._drawer.show_restoring(
+            "Downloading volumes from Telegram and extracting with 7z.\n"
+            f"Elapsed: {elapsed}s — large files may take several minutes.\n"
+            f"Destination: {self._restore_dest.resolve()}"
+        )
+        self._restore_tick_job = self._root.after(1000, self._update_restore_progress)
+
+    def _end_restore_ui(self) -> None:
+        self._restore_running = False
+        self._restore_dest = None
+        self._restore_tick_start = None
+        if self._restore_tick_job is not None:
+            self._root.after_cancel(self._restore_tick_job)
+            self._restore_tick_job = None
+        if self._explorer is not None:
+            self._explorer.set_toolbar_enabled(True)
+
+    def _pick_restore_destination(self) -> Path | None:
+        initial_dir = default_restore_dir()
+        dest_path = filedialog.askdirectory(
+            title="Select restore destination",
+            initialdir=str(initial_dir),
+        )
         if not dest_path:
-            return
+            return None
 
         dest = Path(dest_path)
+        if is_under_install_root(dest):
+            proceed = messagebox.askyesno(
+                "Install directory selected",
+                (
+                    f"{dest.resolve()} is under the application install path.\n\n"
+                    "This folder is often not writable after a .deb install.\n"
+                    "Use a folder in your home directory (for example ~/Restored/).\n\n"
+                    "Continue anyway?"
+                ),
+                parent=self._root,
+            )
+            if not proceed:
+                return None
+
         existing_files: list[Path] = []
         if dest.is_dir():
             existing_files = [path for path in dest.iterdir() if path.is_file()]
-        if existing_files:
+        blocked = readonly_existing_files(dest)
+        if blocked:
+            proceed = messagebox.askyesno(
+                "Read-only files in destination",
+                (
+                    f"{len(blocked)} file(s) in {dest} are read-only and may block restore:\n"
+                    f"• {blocked[0].name}"
+                    f"{f' … and {len(blocked) - 1} more' if len(blocked) > 1 else ''}\n\n"
+                    "Choose an empty writable folder or remove those files.\n\n"
+                    "Continue anyway?"
+                ),
+                parent=self._root,
+            )
+            if not proceed:
+                return None
+        elif existing_files:
             proceed = messagebox.askyesno(
                 "Restore destination not empty",
                 (
@@ -310,22 +406,22 @@ class BackupApp:
                 parent=self._root,
             )
             if not proceed:
-                return
+                return None
 
-        self._drawer.show_working("Restoring session", f"Destination: {dest_path}")
-        try:
-            result = self._receiver.request_restore(session_id, dest)
-        except Exception as error:
-            detail = format_user_error("Restore", error)
-            if getattr(error, "code", "") == "legacy_volumes":
-                detail = (
-                    "Re-backup required (legacy Bot API volumes). "
-                    "Use TELEGRAM_PROVIDER=client and back up again."
-                )
-            self._drawer.show_result("Restore failed", detail)
+        return dest
+
+    def _finish_restore_failed(self, detail: str, *, warning: bool = False) -> None:
+        self._end_restore_ui()
+        if self._drawer is not None:
+            title = "Restore unavailable" if warning else "Restore failed"
+            self._drawer.show_result(title, detail)
+        if warning:
+            messagebox.showwarning("Restore unavailable", detail, parent=self._root)
+        else:
             messagebox.showerror("Restore failed", detail, parent=self._root)
-            return
 
+    def _finish_restore_success(self, result: RestoreResultDTO, dest: Path) -> None:
+        self._end_restore_ui()
         if result.downloaded_paths:
             files_list = "\n".join(
                 f"• {Path(path).resolve()}" for path in result.downloaded_paths[:10]
@@ -341,8 +437,8 @@ class BackupApp:
                 f"No files were restored to {dest.resolve()}. "
                 "Check session volumes and encryption key."
             )
-
-        self._drawer.show_result("Restore complete", detail)
+        if self._drawer is not None:
+            self._drawer.show_result("Restore complete", detail)
         messagebox.showinfo("Restore complete", detail, parent=self._root)
 
     def _refresh_queue(self) -> None:
@@ -351,23 +447,23 @@ class BackupApp:
             return
 
         try:
-            progress = self._receiver.get_session_progress(session_id)
+            snapshot = self._receiver.get_session_queue_snapshot(session_id)
         except Exception as error:
             messagebox.showerror(
-                "Progress failed",
-                format_user_error("Progress", error),
+                "Queue refresh failed",
+                format_user_error("Queue refresh", error),
                 parent=self._root,
             )
             return
 
-        self._explorer.render_progress(progress)
+        self._explorer.render_queue_snapshot(snapshot)
 
 
-def _format_item_status_summary(progress: ProgressDTO) -> str:
-    if not progress.items:
+def _format_item_status_summary(snapshot: SessionQueueSnapshotDTO) -> str:
+    if not snapshot.items:
         return "The queue is empty — use Add File first."
     counts: dict[str, int] = {}
-    for item in progress.items:
+    for item in snapshot.items:
         key = item.status.lower()
         counts[key] = counts.get(key, 0) + 1
     parts = [f"  • {status}: {count}" for status, count in sorted(counts.items())]

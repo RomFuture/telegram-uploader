@@ -91,9 +91,7 @@ class SettingsDialog(tk.Toplevel):
             justify="left",
         ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 8))
         row += 1
-        row = self._add_combo(
-            frame, row, "Active provider", self._provider_var, ("client", "bot")
-        )
+        row = self._add_combo(frame, row, "Active provider", self._provider_var, ("client", "bot"))
 
         ram_frame = ttk.Frame(frame)
         ram_frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -116,7 +114,7 @@ class SettingsDialog(tk.Toplevel):
             frame,
             text="Client API is required for Restore. Configure credentials on the Client API tab.",
             wraplength=420,
-        ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(8,  0))
+        ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(8, 0))
         frame.columnconfigure(1, weight=1)
 
     def _build_client_tab(self, frame: ttk.Frame) -> None:
@@ -147,7 +145,7 @@ class SettingsDialog(tk.Toplevel):
                 "2. Set backup group ID on the General tab\n"
                 "3. Click Save (writes ~/.config/telegram-uploader/.env)\n"
                 "4. Sign in to Telegram… (one time — phone + code in terminal)\n"
-                "5. Test Client API — uploads a small test file to your group"
+                "5. Test Client API — uploads and downloads a small test file from your group"
             ),
             wraplength=420,
             justify="left",

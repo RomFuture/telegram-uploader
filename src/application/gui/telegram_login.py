@@ -259,9 +259,7 @@ class TelegramSignInDialog(tk.Toplevel):
 
         def worker() -> None:
             try:
-                run_complete_login(
-                    self._config, phone, code, self._phone_code_hash, password
-                )
+                run_complete_login(self._config, phone, code, self._phone_code_hash, password)
             except Exception as exc:
                 self.after(0, self._make_sign_in_failed_callback(exc))
                 return
