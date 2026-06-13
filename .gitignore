@@ -1,5 +1,11 @@
 .env
 .venv/
+
+# Local Telegram session & config (never commit)
+*.session
+*.session-journal
+.config/telegram-uploader/
+${HOME}/
 build/
 dist/
 __pycache__/
