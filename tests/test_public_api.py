@@ -55,7 +55,9 @@ def _gui_entrypoint(
         list_session_profiles=ListSessionProfilesUseCase(repos.sessions),
         list_folders_uc=ListFoldersUseCase(repos.folders),
         create_folder_uc=CreateFolderUseCase(repos.folders),
-        get_session_queue_snapshot=GetSessionQueueSnapshotUseCase(repos.source_items, repos.folders),
+        get_session_queue_snapshot=GetSessionQueueSnapshotUseCase(
+            repos.source_items, repos.folders
+        ),
         enqueue_source_item=EnqueueSourceItemUseCase(repos.source_items, repos.folders),
         start_backup_pipeline=StartBackupPipelineUseCase(repos, task_queue),
         restore_session_uc=RestoreSessionUseCase(

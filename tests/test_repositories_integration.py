@@ -23,9 +23,10 @@ def postgres_dsn() -> str:
 def test_session_crud_round_trip(postgres_dsn: str) -> None:
     apply_migrations(postgres_dsn)
     repos = SqlAlchemyRepositories.from_dsn(postgres_dsn)
+    profile_name = f"integration-test-{uuid4()}"
     record = SessionRecord(
         id=uuid4(),
-        profile_name="integration-test",
+        profile_name=profile_name,
         encryption_key="secret",
         status="created",
         created_at=datetime.now(tz=UTC),
@@ -33,5 +34,5 @@ def test_session_crud_round_trip(postgres_dsn: str) -> None:
     repos.sessions.add(record)
     loaded = repos.sessions.get(record.id)
     assert loaded is not None
-    assert loaded.profile_name == "integration-test"
+    assert loaded.profile_name == profile_name
     assert loaded.encryption_key == "secret"

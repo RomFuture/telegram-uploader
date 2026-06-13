@@ -149,7 +149,7 @@ class ExplorerView(ttk.Frame):
     def select_folder(self, folder_id: UUID) -> None:
         self._selected_folder_id = folder_id
         self._render_folder_list()
-        if self._progress is not None:
+        if self._queue_snapshot is not None:
             self.render_queue_snapshot(self._queue_snapshot)
 
     def _render_folder_list(self) -> None:
@@ -169,7 +169,7 @@ class ExplorerView(ttk.Frame):
         folder = self._folders[selection[0]]
         self._selected_folder_id = folder.folder_id
         self._on_folder_selected(folder.folder_id)
-        if self._progress is not None:
+        if self._queue_snapshot is not None:
             self.render_queue_snapshot(self._queue_snapshot)
 
     def _handle_new_folder(self) -> None:
