@@ -51,13 +51,14 @@ def _load_provider() -> tuple[AppConfig, TelegramClientProvider]:
         api_id=cfg.telegram_api_id,
         api_hash=cfg.telegram_api_hash,
         session_path=cfg.telegram_session_path,
+        remote_target=cfg.telegram_target_chat_id,
     )
     return cfg, provider
 
 
 def _run_login_only(cfg: AppConfig, provider: TelegramClientProvider) -> int:
     print("Connecting to Telegram (enter phone and code if asked)...", flush=True)
-    if not provider.healthcheck(cfg.telegram_target_chat_id):
+    if not provider.healthcheck():
         print(
             "error: login or healthcheck failed — check .env, group membership, and chat id",
             file=sys.stderr,
@@ -82,14 +83,13 @@ def _run_round_trip(cfg: AppConfig, provider: TelegramClientProvider, file_path:
         return 1
 
     print("healthcheck...", flush=True)
-    if not provider.healthcheck(cfg.telegram_target_chat_id):
+    if not provider.healthcheck():
         print("error: healthcheck failed — check session auth and group access", file=sys.stderr)
         return 1
 
     print(f"uploading {file_path.name}...", flush=True)
     upload = provider.upload_file(
         file_path,
-        cfg.telegram_target_chat_id,
         file_path.name,
     )
     print(f"  message_id={upload.external_message_id} ref={upload.provider_download_ref}")

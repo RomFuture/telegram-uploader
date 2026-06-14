@@ -125,7 +125,6 @@ def test_backup_happy_path_with_fakes(
             archive_volumes=repos.archive_volumes,
             storage_provider=storage,
             task_queue=task_queue,
-            remote_target="-1001",
         ).execute(volume_id)
 
     assert len(task_queue.cleanup_ids) == 2
@@ -348,7 +347,6 @@ def test_retry_upload_skips_when_volume_already_uploaded(
         archive_volumes=repos.archive_volumes,
         storage_provider=storage,
         task_queue=task_queue,
-        remote_target="-1001",
     )
     upload_uc.execute(volume_id)
     task_queue.cleanup_ids.clear()
@@ -425,7 +423,6 @@ def test_retry_upload_continues_from_uploading_status(
         archive_volumes=repos.archive_volumes,
         storage_provider=storage,
         task_queue=task_queue,
-        remote_target="-1001",
     ).execute(volume_id)
 
     stored = repos.archive_volumes.get(volume_id)
@@ -465,7 +462,6 @@ def test_retry_cleanup_skips_when_item_already_completed(
         archive_volumes=repos.archive_volumes,
         storage_provider=storage,
         task_queue=task_queue,
-        remote_target="-1001",
     ).execute(volume_id)
 
     cleanup_uc = CleanupVolumeUseCase(repos.source_items, repos.archive_volumes)
@@ -542,7 +538,6 @@ def test_report_cleanup_failure_marks_cleanup_item_failed(
         archive_volumes=repos.archive_volumes,
         storage_provider=FakeStorageProvider(),
         task_queue=task_queue,
-        remote_target="-1001",
     ).execute(task_queue.upload_ids[0])
 
     ReportCleanupFailureUseCase(repos.source_items).execute(item.id)

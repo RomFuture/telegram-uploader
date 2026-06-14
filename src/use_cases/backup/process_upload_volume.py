@@ -20,7 +20,6 @@ class ProcessUploadVolumeUseCase:
     archive_volumes: ArchiveVolumeRepository
     storage_provider: StorageProviderPort
     task_queue: TaskQueuePort
-    remote_target: str
 
     def execute(self, archive_volume_id: UUID) -> None:
         volume = self.archive_volumes.require(archive_volume_id)
@@ -43,7 +42,6 @@ class ProcessUploadVolumeUseCase:
 
         upload_result = self.storage_provider.upload_file(
             local_path=uploading.local_path,
-            remote_target=self.remote_target,
             display_name=uploading.file_name,
         )
         # Client API stores provider_download_ref as client:{chat}:{msg}:{doc}.

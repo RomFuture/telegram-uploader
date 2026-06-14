@@ -10,7 +10,7 @@ def test_verify_storage_provider_upload_download_roundtrip(tmp_path: Path) -> No
     provider = FakeStorageProvider()
     use_case = VerifyStorageProviderUseCase(test_file_path=test_file)
 
-    result = use_case.execute(provider, "-1001")
+    result = use_case.execute(provider)
 
     assert result.ok is True
     assert result.stage == "verify"
@@ -23,7 +23,7 @@ def test_verify_storage_provider_upload_download_roundtrip(tmp_path: Path) -> No
 def test_verify_storage_provider_reports_missing_test_file() -> None:
     use_case = VerifyStorageProviderUseCase(test_file_path=Path("/nonexistent/readme.md"))
 
-    result = use_case.execute(FakeStorageProvider(), "-1001")
+    result = use_case.execute(FakeStorageProvider())
 
     assert result.ok is False
     assert result.stage == "test_file"
@@ -34,12 +34,11 @@ def test_verify_storage_provider_reports_healthcheck_failure(tmp_path: Path) -> 
     test_file.write_text("# test", encoding="utf-8")
 
     class FailingProvider(FakeStorageProvider):
-        def healthcheck(self, remote_target: str) -> bool:
+        def healthcheck(self) -> bool:
             return False
 
     result = VerifyStorageProviderUseCase(test_file_path=test_file).execute(
         FailingProvider(),
-        "-1001",
     )
 
     assert result.ok is False
@@ -65,7 +64,6 @@ def test_verify_storage_provider_reports_download_mismatch(tmp_path: Path) -> No
 
     result = VerifyStorageProviderUseCase(test_file_path=test_file).execute(
         MismatchProvider(),
-        "-1001",
     )
 
     assert result.ok is False

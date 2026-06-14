@@ -30,8 +30,9 @@ def test_live_client_healthcheck() -> None:
         api_id=config.telegram_api_id,
         api_hash=config.telegram_api_hash,
         session_path=Path(config.telegram_session_path),
+        remote_target=config.telegram_target_chat_id,
     )
-    assert provider.healthcheck(config.telegram_target_chat_id)
+    assert provider.healthcheck()
 
 
 @pytest.mark.integration
@@ -60,11 +61,9 @@ def test_live_client_upload_download_roundtrip() -> None:
         api_id=config.telegram_api_id,
         api_hash=config.telegram_api_hash,
         session_path=session_path,
+        remote_target=config.telegram_target_chat_id,
     )
-    result = VerifyStorageProviderUseCase(test_file_path=test_file).execute(
-        provider,
-        config.telegram_target_chat_id,
-    )
+    result = VerifyStorageProviderUseCase(test_file_path=test_file).execute(provider)
     assert result.ok is True, result.message
     assert result.stage == "verify"
     assert result.provider_ref is not None

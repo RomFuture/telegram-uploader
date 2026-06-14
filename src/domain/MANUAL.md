@@ -150,7 +150,7 @@ sequenceDiagram
 | `no_restorable_backups(id)` | `no_restorable_backups` | Restore: нет uploaded volumes | `RestoreSessionUseCase` |
 | `no_restorable_backups_in_folder(name)` | `no_restorable_backups_in_folder` | Restore папки без backup | `RestoreSessionUseCase` |
 | `legacy_volumes()` | `legacy_volumes` | Старый Bot API backup | `restore/refs.py`, `RestoreSessionUseCase` |
-| `restore_destination_not_writable(path, detail)` | `restore_destination_not_writable` | Нельзя писать в dest | `restore/dest_path.py` |
+| `restore_destination_not_writable(path, detail)` | `restore_destination_not_writable` | Нельзя писать в dest | `restore/restore_session.py` |
 
 GUI ловит `DomainError` и показывает `str(error)` (message). Некоторые `code` обрабатываются отдельно в `application/gui/errors.py`.
 

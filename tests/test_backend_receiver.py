@@ -29,6 +29,8 @@ def test_backend_receiver_imports_only_use_cases_public() -> None:
                 layer_imports.append(node.module)
 
     assert layer_imports == [
+        "application.restore_preflight_messages",
+        "application.restore_preflight_scope",
         "application.settings_values",
         "use_cases.public",
         "use_cases.public.commands",

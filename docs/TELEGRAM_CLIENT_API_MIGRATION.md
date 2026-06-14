@@ -130,9 +130,9 @@ flowchart LR
 
 ### Изменения в use_cases (v1 policy)
 
-- `use_cases.restore.refs`: **`client:` only** — `restore_ref_for_volume`, `is_client_restore_ref`, `has_legacy_bot_volumes`
+- `use_cases.restore.refs`: restore policy через `StorageProviderPort.assess_restore_ref` (без `client:` в UC)
 - Нет fallback на `message:{chat}:{id}` или bot `file_id` (не поддерживается `TelegramClientProvider`)
-- `StorageProviderPort` без изменений; `get_file_info(ref)` принимает opaque `client:` string
+- `StorageProviderPort`: `assess_restore_ref` / `resolve_restore_ref`; ref format — в adapter
 
 ---
 

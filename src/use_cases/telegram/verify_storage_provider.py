@@ -19,11 +19,7 @@ class VerifyStorageProviderResult:
 class VerifyStorageProviderUseCase:
     test_file_path: Path
 
-    def execute(
-        self,
-        provider: StorageProviderPort,
-        target_chat_id: str,
-    ) -> VerifyStorageProviderResult:
+    def execute(self, provider: StorageProviderPort) -> VerifyStorageProviderResult:
         if not self.test_file_path.is_file():
             return VerifyStorageProviderResult(
                 ok=False,
@@ -32,7 +28,7 @@ class VerifyStorageProviderUseCase:
             )
 
         try:
-            if not provider.healthcheck(target_chat_id):
+            if not provider.healthcheck():
                 return VerifyStorageProviderResult(
                     ok=False,
                     stage="healthcheck",
@@ -51,7 +47,6 @@ class VerifyStorageProviderUseCase:
         try:
             upload = provider.upload_file(
                 self.test_file_path,
-                target_chat_id,
                 "client-api-test.md",
             )
         except Exception as error:
@@ -100,6 +95,6 @@ class VerifyStorageProviderUseCase:
         return VerifyStorageProviderResult(
             ok=True,
             stage="verify",
-            message=(f"Upload and download OK for chat {target_chat_id}.\nRef: {provider_ref}"),
+            message=(f"Upload and download OK for configured target.\nRef: {provider_ref}"),
             provider_ref=provider_ref,
         )

@@ -15,6 +15,7 @@ from use_cases.shared.dto import (
     ProviderErrorCategory,
     ProviderFileInfo,
     ProviderLimits,
+    RestoreRefCapability,
     UploadResult,
 )
 
@@ -45,32 +46,31 @@ class TelegramClientProvider:
     api_id: int
     api_hash: str
     session_path: Path
+    remote_target: str
     request_timeout_seconds: float = 60.0
 
-    def healthcheck(self, remote_target: str) -> bool:
+    def healthcheck(self) -> bool:
         try:
-            return bool(_run_async(self._healthcheck_async(remote_target)))
+            return bool(_run_async(self._healthcheck_async()))
         except Exception:
             return False
 
-    async def _healthcheck_async(self, remote_target: str) -> bool:
+    async def _healthcheck_async(self) -> bool:
         client = self._build_client()
         async with client:
-            await client.get_entity(int(remote_target))
+            await client.get_entity(int(self.remote_target))
         return True
 
-    def upload_file(self, local_path: Path, remote_target: str, display_name: str) -> UploadResult:
+    def upload_file(self, local_path: Path, display_name: str) -> UploadResult:
         return cast(
             UploadResult,
-            _run_async(self._upload_async(local_path, remote_target, display_name)),
+            _run_async(self._upload_async(local_path, display_name)),
         )
 
-    async def _upload_async(
-        self, local_path: Path, remote_target: str, display_name: str
-    ) -> UploadResult:
+    async def _upload_async(self, local_path: Path, display_name: str) -> UploadResult:
         client = self._build_client()
         async with client:
-            entity = await client.get_entity(int(remote_target))
+            entity = await client.get_entity(int(self.remote_target))
             message = await client.send_file(
                 entity,
                 str(local_path),
@@ -81,7 +81,9 @@ class TelegramClientProvider:
                 raise TelegramClientProviderError("Uploaded message has no document")
             document = message.document
             document_id = int(document.id)
-            provider_ref = build_client_download_ref(remote_target, int(message.id), document_id)
+            provider_ref = build_client_download_ref(
+                self.remote_target, int(message.id), document_id
+            )
             file_name = getattr(document, "file_name", None) or display_name
             return UploadResult(
                 provider_name="telegram_client",
@@ -169,6 +171,19 @@ class TelegramClientProvider:
                     f"Download failed for message {message_id} in chat {chat_id}"
                 )
         return destination_path
+
+    def assess_restore_ref(self, provider_download_ref: str) -> RestoreRefCapability:
+        if not provider_download_ref.strip():
+            return RestoreRefCapability.UNSUPPORTED
+        try:
+            parse_client_download_ref(provider_download_ref)
+        except TelegramClientProviderError:
+            return RestoreRefCapability.UNSUPPORTED_LEGACY
+        return RestoreRefCapability.RESTORABLE
+
+    def resolve_restore_ref(self, provider_download_ref: str) -> str:
+        parse_client_download_ref(provider_download_ref)
+        return provider_download_ref
 
     def classify_error(self, error_value: Exception) -> ClassifiedProviderError:
         message = str(error_value).lower()

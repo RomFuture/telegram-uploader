@@ -68,14 +68,12 @@ def _gui_entrypoint(
             storage_provider=storage,
             archive_service=archive_service,
             staging_dir=restore_dir,
-            target_chat_id="-1001",
         ),
         check_restore_ready_uc=CheckRestoreReadyUseCase(
             archive_volumes=repos.archive_volumes,
             source_items=repos.source_items,
             folders=repos.folders,
             storage_provider=storage,
-            target_chat_id="-1001",
         ),
         verify_storage_provider_uc=VerifyStorageProviderUseCase(
             test_file_path=Path(__file__).resolve().parents[1]
@@ -114,7 +112,6 @@ def _celery_entrypoint(
             archive_volumes=repos.archive_volumes,
             storage_provider=storage,
             task_queue=task_queue,
-            remote_target="-1001",
         ),
         process_cleanup_uc=CleanupVolumeUseCase(
             source_items=repos.source_items,
@@ -124,7 +121,6 @@ def _celery_entrypoint(
             archive_volumes=repos.archive_volumes,
             storage_provider=storage,
             staging_dir=restore_dir,
-            target_chat_id="-1001",
         ),
         report_archive_failure_uc=ReportArchiveFailureUseCase(repos.source_items),
         report_upload_failure_uc=ReportUploadFailureUseCase(

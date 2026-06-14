@@ -6,6 +6,7 @@ from use_cases.public.commands import (
     RestoreSessionCommand,
     StartSessionCommand,
 )
+from use_cases.public.folders import DEFAULT_FOLDER_NAME, is_default_folder_name
 from use_cases.public.gui_entrypoint import GuiEntrypoint
 from use_cases.public.results import (
     QueueItemResult,
@@ -17,8 +18,10 @@ from use_cases.public.results import (
 
 __all__ = [
     "CeleryEntrypoint",
+    "DEFAULT_FOLDER_NAME",
     "EnqueueFileCommand",
     "GuiEntrypoint",
+    "is_default_folder_name",
     "QueueItemResult",
     "QueueItemSnapshotResult",
     "RestoreResult",

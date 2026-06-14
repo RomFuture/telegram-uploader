@@ -12,7 +12,7 @@ from use_cases.backup.report_failure import (
     ReportCleanupFailureUseCase,
     ReportUploadFailureUseCase,
 )
-from use_cases.restore.process_restore_volume import ProcessRestoreVolumeUseCase
+from use_cases.restore import ProcessRestoreVolumeUseCase
 
 
 @dataclass(frozen=True, slots=True)

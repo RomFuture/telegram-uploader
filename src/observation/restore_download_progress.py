@@ -1,4 +1,10 @@
-"""Progress and heartbeat logging for long Telegram downloads."""
+"""Observation: progress and heartbeat logging for long restore downloads.
+
+Not restore business policy (scope, refs, writable dest). Lives under
+``observation/`` because it only decides *when* to log bytes received during
+``StorageProviderPort.download_file(on_progress=...)``. Wired from
+``RestoreSessionUseCase``; infra forwards the callback to Telethon unchanged.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +12,7 @@ import logging
 import time
 from collections.abc import Callable
 
-logger = logging.getLogger("use_cases.restore.download")
+logger = logging.getLogger("observation.restore.download")
 
 DEFAULT_HEARTBEAT_SECONDS = 30.0
 

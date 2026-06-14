@@ -26,12 +26,12 @@ def check_redis(url: str) -> bool:
         return False
 
 
-def check_telegram(target_chat_id: str) -> bool:
-    if not target_chat_id:
-        return False
+def check_telegram() -> bool:
     cfg = load_config()
+    if not cfg.telegram_target_chat_id:
+        return False
     provider = build_storage_provider(cfg)
-    return provider.healthcheck(target_chat_id)
+    return provider.healthcheck()
 
 
 def main() -> int:
@@ -39,7 +39,7 @@ def main() -> int:
     checks = {
         "postgres": check_postgres(cfg.postgres_dsn),
         "redis": check_redis(cfg.redis_url),
-        "telegram": check_telegram(cfg.telegram_target_chat_id),
+        "telegram": check_telegram(),
     }
     for name, ok in checks.items():
         print(f"{name}: {'ok' if ok else 'fail'}")

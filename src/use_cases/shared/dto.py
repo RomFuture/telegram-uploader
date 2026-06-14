@@ -4,6 +4,12 @@ from dataclasses import dataclass
 from enum import Enum
 
 
+class RestoreRefCapability(str, Enum):
+    RESTORABLE = "restorable"
+    UNSUPPORTED_LEGACY = "unsupported_legacy"
+    UNSUPPORTED = "unsupported"
+
+
 class ProviderErrorCategory(str, Enum):
     RETRYABLE = "retryable"
     FATAL = "fatal"

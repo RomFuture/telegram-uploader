@@ -250,7 +250,7 @@ class DomainError(Exception):
 
         Produces ``code="restore_destination_not_writable"`` with OS error detail.
 
-        Typical callers: ``use_cases.restore.dest_path``.
+        Typical callers: ``use_cases.restore.restore_session``.
         """
         return cls(
             code="restore_destination_not_writable",

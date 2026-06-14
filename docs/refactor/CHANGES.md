@@ -6,6 +6,125 @@
 
 ---
 
+## 2026-06-13 — Preflight scope → application
+
+| Область | Было | Стало |
+|---------|------|--------|
+| `RestoreReadyResult` | `folder_name`, `restore_entire_session` | только business fields (counts, reason) |
+| Preflight copy | scope из result | `RestorePreflightScope` из GUI → `format_restore_preflight_message(result, scope)` |
+
+**Gate:** pytest, ruff, mypy, lint-imports.
+
+---
+
+## 2026-06-13 — Legacy skip preflight UX
+
+| Область | Было | Стало |
+|---------|------|--------|
+| Preflight | `LEGACY_VOLUMES` hard stop при любом legacy | skip legacy; `legacy_volume_count` в scope папки |
+| `incomplete_volume_count` | включал legacy volumes | только non-legacy incomplete |
+| `RestoreSessionUseCase` | `legacy_volumes()` если только legacy | `no_restorable_backups` |
+| READY message | legacy смешивался с incomplete | отдельная строка про skipped legacy |
+
+**Gate:** pytest, ruff, mypy.
+
+---
+
+## 2026-06-13 — `scope_all_files` → `restore_entire_session`
+
+| Было | Стало |
+|------|--------|
+| `scope_all_files` (`RestoreReadyResult`) | `restore_entire_session` |
+| inline `folder_id is None or is_default_folder_name(...)` | `is_session_wide_restore_scope()` in `scope.py` |
+
+---
+
+## 2026-06-13 — Restore scope naming (restorable_ids_in_session / in_scope)
+
+| Было | Стало |
+|------|--------|
+| `source_item_ids_ready_for_restore` | `source_item_ids_restorable_in_session` |
+| `filter_ready_items_by_folder` | `filter_restorable_ids_by_folder` |
+| `ready_in_session` / `ready_in_scope` | `restorable_ids_in_session` / `restorable_ids_in_scope` |
+
+Move-only rename; логика без изменений.
+
+---
+
+## 2026-06-13 — Restore scope naming (ready_in_session / ready_in_scope)
+
+| Было | Стало |
+|------|--------|
+| `restorable_source_item_ids` | `source_item_ids_ready_for_restore` |
+| `restorable_source_item_ids_for_folder` | `filter_ready_items_by_folder` |
+| `all_restorable` / `restorable_items` (locals) | `ready_in_session` / `ready_in_scope` |
+
+Move-only rename; логика без изменений.
+
+---
+
+## 2026-06-13 — StorageProviderPort restore ref assessment
+
+| Область | Было | Стало |
+|---------|------|--------|
+| `refs.py` | `client:` prefix, `is_client_restore_ref`, `has_legacy_bot_volumes` | `assess_restore_ref` / `resolve_restore_ref` на порту; helpers принимают `StorageProviderPort` |
+| `StorageProviderPort` | upload/download only | + `RestoreRefCapability`, `assess_restore_ref`, `resolve_restore_ref` |
+| Adapters | — | Client/Bot/Unconfigured/Fake классифицируют ref; формат `client:` только в infra |
+
+**Почему:** restore policy не должна знать Telegram Client API в use_cases (hexagonal).
+
+**Gate:** `pytest -m "not integration"`, `ruff`, `mypy`.
+
+---
+
+## 2026-06-13 — Revert ArchiveVolume.list_domain_by_session (map in UC)
+
+| Область | Было (краткий эксперимент) | Стало |
+|---------|---------------------------|--------|
+| `ArchiveVolumeRepository` | + `list_domain_by_session` (Domain из infra) | только `list_by_session` → Record; Domain map в UC |
+| `CheckRestoreReadyUseCase` | `list_domain_by_session` | `list_by_session` + `map_archive_volumes` |
+| `loading.py` | `require_domain_volumes_for_session` split | inline check в `require_archive_volumes_for_session` |
+
+**Почему:** blur «infra мапит domain» vs модель «UC командует, infra отдаёт Record». `SourceItemRepository.list_domain_by_session` не тронут (backup pipeline).
+
+**Gate:** `pytest -m "not integration"`, `ruff`, `mypy`.
+
+---
+
+## 2026-06-13 — ArchiveVolumeRepository.list_domain_by_session
+
+| Область | Было | Стало |
+|---------|------|--------|
+| `ArchiveVolumeRepository` | session: `list_by_session` (Record) or `require_for_session` (Domain + raise) | + `list_domain_by_session` → Domain, empty list OK |
+| `CheckRestoreReadyUseCase` | `list_by_session` + `map_archive_volumes` from `loading` | `list_domain_by_session` only |
+| `require_for_session` impl | `map(list_by_session(...))` | delegates via `list_domain_by_session` |
+
+**Файлы:** `archive_volume.py` (Protocol), `sqlalchemy_repositories.py`, `tests/fakes/repositories.py`, `check_restore_ready.py`, `restore/preflight_results.py` (break circular import), `tests/test_archive_volume_repository.py`.
+
+**Поведение:** preflight restore unchanged (`NO_VOLUMES` when empty).
+
+**Gate:** `pytest -m "not integration"`, `ruff`, `mypy`.
+
+---
+
+## 2026-06-13 — Bound storage provider (remove target_chat_id from restore/upload UC)
+
+| Область | Было | Стало |
+|---------|------|--------|
+| `StorageProviderPort` | `healthcheck(remote_target)`, `upload_file(..., remote_target, ...)` | `healthcheck()`, `upload_file(path, display_name)` |
+| Infra providers | chat id per call | `remote_target` field on provider instance at wiring |
+| `restore/*` UC | `target_chat_id` field threaded through refs/UC | UC uses bound provider only; refs no longer accept chat id |
+| `ProcessUploadVolumeUseCase` | `remote_target` field | removed |
+| `VerifyStorageProviderUseCase` | `execute(provider, target_chat_id)` | `execute(provider)`; Test Client API builds provider with `remote_target` in `backend_receiver` |
+
+**Файлы:** `storage_provider.py`, `telegram_*_provider.py`, `bootstrap.py`, `restore/*.py`, `process_upload_volume.py`, `verify_storage_provider.py`, `observation/health.py`, tests.
+
+**Поведение:** без изменений для пользователя; composition root (`bootstrap`) передаёт `TELEGRAM_TARGET_CHAT_ID` только в adapter.
+
+**Gate:** `pytest -m "not integration"`, `ruff`, `mypy`, `lint-imports`.
+
+---
+
 ## 2026-06-12 — Rename public entrypoints (naming clarity)
 
 | Было | Стало |

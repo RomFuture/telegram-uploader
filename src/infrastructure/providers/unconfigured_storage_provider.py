@@ -11,6 +11,7 @@ from use_cases.shared.dto import (
     ProviderErrorCategory,
     ProviderFileInfo,
     ProviderLimits,
+    RestoreRefCapability,
     UploadResult,
 )
 
@@ -28,11 +29,12 @@ _CONFIGURE_MSG = (
 @dataclass(frozen=True, slots=True)
 class UnconfiguredStorageProvider:
     mode: str
+    remote_target: str = ""
 
-    def healthcheck(self, remote_target: str) -> bool:
+    def healthcheck(self) -> bool:
         return False
 
-    def upload_file(self, local_path: Path, remote_target: str, display_name: str) -> UploadResult:
+    def upload_file(self, local_path: Path, display_name: str) -> UploadResult:
         raise UnconfiguredProviderError(_CONFIGURE_MSG)
 
     def get_file_info(self, external_file_id: str) -> ProviderFileInfo:
@@ -46,6 +48,12 @@ class UnconfiguredStorageProvider:
         *,
         on_progress: Callable[[int, int], None] | None = None,
     ) -> Path:
+        raise UnconfiguredProviderError(_CONFIGURE_MSG)
+
+    def assess_restore_ref(self, provider_download_ref: str) -> RestoreRefCapability:
+        return RestoreRefCapability.UNSUPPORTED
+
+    def resolve_restore_ref(self, provider_download_ref: str) -> str:
         raise UnconfiguredProviderError(_CONFIGURE_MSG)
 
     def classify_error(self, error: Exception) -> ClassifiedProviderError:

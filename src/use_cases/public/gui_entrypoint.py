@@ -20,25 +20,24 @@ from use_cases.public.results import (
     FolderResult,
     QueueItemResult,
     QueueItemSnapshotResult,
+    RestorePreflightResult,
     RestoreResult,
     SessionQueueSnapshotResult,
     SessionResult,
 )
-from use_cases.restore.check_restore_ready import CheckRestoreReadyUseCase, RestoreReadyResult
-from use_cases.restore.restore_session import RestoreSessionUseCase
-from use_cases.session.create import (
+from use_cases.restore import CheckRestoreReadyUseCase, RestoreSessionUseCase
+from use_cases.session import (
     CreateDatabaseUseCase,
     CreateFolderUseCase,
     CreateSessionUseCase,
-)
-from use_cases.session.get_session_queue_snapshot import GetSessionQueueSnapshotUseCase
-from use_cases.session.list import ListFoldersUseCase, ListSessionProfilesUseCase
-from use_cases.session.manage_source_item import (
     DeleteSourceItemUseCase,
+    GetSessionQueueSnapshotUseCase,
+    ListFoldersUseCase,
+    ListSessionProfilesUseCase,
     MoveSourceItemUseCase,
     RenameSourceItemUseCase,
+    UnlockSessionUseCase,
 )
-from use_cases.session.unlock_session import UnlockSessionUseCase
 from use_cases.telegram.verify_storage_provider import (
     VerifyStorageProviderResult,
     VerifyStorageProviderUseCase,
@@ -155,18 +154,17 @@ class GuiEntrypoint:
         session_id: UUID,
         *,
         folder_id: UUID | None = None,
-    ) -> RestoreReadyResult:
+    ) -> RestorePreflightResult:
         return self.check_restore_ready_uc.execute(session_id, folder_id=folder_id)
 
     def verify_storage_provider(
         self,
         provider: object,
-        target_chat_id: str,
     ) -> VerifyStorageProviderResult:
         from use_cases.shared.ports.storage_provider import StorageProviderPort
 
         assert isinstance(provider, StorageProviderPort)
-        return self.verify_storage_provider_uc.execute(provider, target_chat_id)
+        return self.verify_storage_provider_uc.execute(provider)
 
     def rename_source_item(self, command: RenameSourceItemCommand) -> None:
         self.rename_source_item_uc.execute(command.source_item_id, command.display_name)

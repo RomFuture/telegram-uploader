@@ -4,7 +4,11 @@ from pathlib import Path
 FORBIDDEN_USE_CASES = {"sqlalchemy", "urllib", "infrastructure", "celery"}
 FORBIDDEN_INFRASTRUCTURE = {"domain", "application"}
 FORBIDDEN_APPLICATION = {"domain"}
-ALLOWED_APPLICATION_USE_CASES = {"use_cases.public", "use_cases.public.commands"}
+ALLOWED_APPLICATION_USE_CASES = {
+    "use_cases.public",
+    "use_cases.public.commands",
+    "use_cases.public.results",
+}
 
 
 def _top_level_module(name: str) -> str:

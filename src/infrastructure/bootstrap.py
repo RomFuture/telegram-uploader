@@ -25,22 +25,23 @@ from use_cases.backup.report_failure import (
 )
 from use_cases.backup.start_backup_pipeline import StartBackupPipelineUseCase
 from use_cases.public import CeleryEntrypoint, GuiEntrypoint
-from use_cases.restore.check_restore_ready import CheckRestoreReadyUseCase
-from use_cases.restore.process_restore_volume import ProcessRestoreVolumeUseCase
-from use_cases.restore.restore_session import RestoreSessionUseCase
-from use_cases.session.create import (
+from use_cases.restore import (
+    CheckRestoreReadyUseCase,
+    ProcessRestoreVolumeUseCase,
+    RestoreSessionUseCase,
+)
+from use_cases.session import (
     CreateDatabaseUseCase,
     CreateFolderUseCase,
     CreateSessionUseCase,
-)
-from use_cases.session.get_session_queue_snapshot import GetSessionQueueSnapshotUseCase
-from use_cases.session.list import ListFoldersUseCase, ListSessionProfilesUseCase
-from use_cases.session.manage_source_item import (
     DeleteSourceItemUseCase,
+    GetSessionQueueSnapshotUseCase,
+    ListFoldersUseCase,
+    ListSessionProfilesUseCase,
     MoveSourceItemUseCase,
     RenameSourceItemUseCase,
+    UnlockSessionUseCase,
 )
-from use_cases.session.unlock_session import UnlockSessionUseCase
 from use_cases.shared.ports.storage_provider import StorageProviderPort
 from use_cases.shared.repositories import Repositories
 from use_cases.telegram.verify_storage_provider import VerifyStorageProviderUseCase
@@ -51,19 +52,22 @@ def _wire_repositories(cfg: AppConfig) -> Repositories:
 
 
 def build_storage_provider(cfg: AppConfig) -> StorageProviderPort:
+    remote_target = cfg.telegram_target_chat_id
     if cfg.telegram_provider == "client":
         if cfg.telegram_api_id is None or not cfg.telegram_api_hash:
-            return UnconfiguredStorageProvider(mode="client")
+            return UnconfiguredStorageProvider(mode="client", remote_target=remote_target)
         return TelegramClientProvider(
             api_id=cfg.telegram_api_id,
             api_hash=cfg.telegram_api_hash,
             session_path=cfg.telegram_session_path,
+            remote_target=remote_target,
         )
     if not cfg.telegram_bot_token:
-        return UnconfiguredStorageProvider(mode="bot")
+        return UnconfiguredStorageProvider(mode="bot", remote_target=remote_target)
     return TelegramProviderV1(
         bot_token=cfg.telegram_bot_token,
         base_url=cfg.telegram_bot_api_url,
+        remote_target=remote_target,
     )
 
 
@@ -72,11 +76,13 @@ def build_client_provider(
     api_id: int,
     api_hash: str,
     session_path: Path,
+    remote_target: str,
 ) -> StorageProviderPort:
     return TelegramClientProvider(
         api_id=api_id,
         api_hash=api_hash,
         session_path=session_path,
+        remote_target=remote_target,
     )
 
 
@@ -126,14 +132,12 @@ def wire_gui_entrypoint(cfg: AppConfig) -> GuiEntrypoint:
             storage_provider=provider,
             archive_service=archive_service,
             staging_dir=restore_dir,
-            target_chat_id=cfg.telegram_target_chat_id,
         ),
         check_restore_ready_uc=CheckRestoreReadyUseCase(
             archive_volumes=repos.archive_volumes,
             source_items=repos.source_items,
             folders=repos.folders,
             storage_provider=provider,
-            target_chat_id=cfg.telegram_target_chat_id,
         ),
         verify_storage_provider_uc=VerifyStorageProviderUseCase(
             test_file_path=_client_api_test_file(),
@@ -169,7 +173,6 @@ def wire_celery_entrypoint(cfg: AppConfig) -> CeleryEntrypoint:
             archive_volumes=repos.archive_volumes,
             storage_provider=provider,
             task_queue=task_queue,
-            remote_target=cfg.telegram_target_chat_id,
         ),
         process_cleanup_uc=CleanupVolumeUseCase(
             source_items=repos.source_items,
@@ -179,7 +182,6 @@ def wire_celery_entrypoint(cfg: AppConfig) -> CeleryEntrypoint:
             archive_volumes=repos.archive_volumes,
             storage_provider=provider,
             staging_dir=restore_dir,
-            target_chat_id=cfg.telegram_target_chat_id,
         ),
         report_archive_failure_uc=ReportArchiveFailureUseCase(repos.source_items),
         report_upload_failure_uc=ReportUploadFailureUseCase(

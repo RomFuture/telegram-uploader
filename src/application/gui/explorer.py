@@ -11,8 +11,7 @@ from uuid import UUID
 from application.backend_receiver import FolderViewDTO, QueueItemViewDTO, SessionQueueSnapshotDTO
 from application.gui.context_menu import prompt_rename, show_file_context_menu
 from application.gui.theme import COLORS
-
-ALL_FILES_FOLDER_NAME = "All files"
+from use_cases.public.folders import is_default_folder_name
 
 
 class ExplorerView(ttk.Frame):
@@ -234,7 +233,7 @@ class ExplorerView(ttk.Frame):
 
         visible_items = snapshot.items
         folder_name = self.selected_folder_name()
-        if self._selected_folder_id is not None and folder_name != ALL_FILES_FOLDER_NAME:
+        if self._selected_folder_id is not None and not is_default_folder_name(folder_name or ""):
             visible_items = tuple(
                 item for item in snapshot.items if item.folder_id == self._selected_folder_id
             )

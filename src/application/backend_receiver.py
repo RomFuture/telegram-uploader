@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
+from application.restore_preflight_messages import format_restore_preflight_message
+from application.restore_preflight_scope import RestorePreflightScope
 from application.settings_values import SettingsValues
 from use_cases.public import GuiEntrypoint
 from use_cases.public.commands import (
@@ -175,9 +177,13 @@ class BackendReceiver:
         session_id: UUID,
         *,
         folder_id: UUID | None = None,
+        scope: RestorePreflightScope,
     ) -> RestorePreflightDTO:
         result = self.gui.check_restore_ready(session_id, folder_id=folder_id)
-        return RestorePreflightDTO(ready=result.ready, message=result.message)
+        return RestorePreflightDTO(
+            ready=result.ready,
+            message=format_restore_preflight_message(result, scope),
+        )
 
     def test_client_api(self, settings: SettingsValues) -> TestClientApiResultDTO:
         session_path = Path(settings.telegram_session_path)
@@ -220,8 +226,9 @@ class BackendReceiver:
             api_id=int(api_id),
             api_hash=api_hash,
             session_path=session_path,
+            remote_target=chat_id,
         )
-        result = self.gui.verify_storage_provider(provider, chat_id)
+        result = self.gui.verify_storage_provider(provider)
         return TestClientApiResultDTO(
             ok=result.ok,
             stage=result.stage,

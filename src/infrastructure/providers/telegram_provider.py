@@ -12,6 +12,7 @@ from use_cases.shared.dto import (
     ProviderErrorCategory,
     ProviderFileInfo,
     ProviderLimits,
+    RestoreRefCapability,
     UploadResult,
 )
 
@@ -24,23 +25,24 @@ class TelegramProviderError(Exception):
 class TelegramProviderV1:
     bot_token: str
     base_url: str
+    remote_target: str
     request_timeout_seconds: float = 30.0
     upload_timeout_seconds: float = 700.0
 
     def _api_url(self, method: str) -> str:
         return f"{self.base_url.rstrip('/')}/bot{self.bot_token}/{method}"
 
-    def healthcheck(self, remote_target: str) -> bool:
+    def healthcheck(self) -> bool:
         try:
             me_payload = self._request_json("getMe", {})
-            chat_payload = self._request_json("getChat", {"chat_id": remote_target})
+            chat_payload = self._request_json("getChat", {"chat_id": self.remote_target})
         except Exception:
             return False
         return bool(me_payload.get("ok")) and bool(chat_payload.get("ok"))
 
-    def upload_file(self, local_path: Path, remote_target: str, display_name: str) -> UploadResult:
+    def upload_file(self, local_path: Path, display_name: str) -> UploadResult:
         body, content_type = self._build_send_document_multipart(
-            chat_id=remote_target,
+            chat_id=self.remote_target,
             file_path=local_path,
             filename=display_name,
         )
@@ -97,6 +99,14 @@ class TelegramProviderV1:
         if on_progress is not None:
             on_progress(len(payload), len(payload) if len(payload) > 0 else total_bytes)
         return destination_path
+
+    def assess_restore_ref(self, provider_download_ref: str) -> RestoreRefCapability:
+        if not provider_download_ref.strip():
+            return RestoreRefCapability.UNSUPPORTED
+        return RestoreRefCapability.UNSUPPORTED_LEGACY
+
+    def resolve_restore_ref(self, provider_download_ref: str) -> str:
+        raise TelegramProviderError("Bot API restore is not supported")
 
     def classify_error(self, error_value: Exception) -> ClassifiedProviderError:
         message = str(error_value).lower()

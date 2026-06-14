@@ -72,7 +72,6 @@ def test_restore_downloads_volumes_in_part_order_and_extracts_to_dest(tmp_path: 
         storage_provider=storage,
         archive_service=FakeArchiveService(),
         staging_dir=tmp_path / "staging",
-        target_chat_id="-1001",
     ).execute(session_id, dest_path)
 
     assert len(storage.downloaded_files) == 2
@@ -123,7 +122,6 @@ def test_restore_raises_when_volume_missing_external_file_id(tmp_path: Path) -> 
             storage_provider=FakeStorageProvider(),
             archive_service=FakeArchiveService(),
             staging_dir=tmp_path / "staging",
-            target_chat_id="-1001",
         ).execute(session_id, tmp_path / "restored")
 
     assert error.value.reason == "no_restorable_backups"
@@ -170,13 +168,12 @@ def test_restore_prefers_provider_download_ref(tmp_path: Path) -> None:
         storage_provider=storage,
         archive_service=FakeArchiveService(),
         staging_dir=tmp_path / "staging",
-        target_chat_id="-1001",
     ).execute(session_id, tmp_path / "restored")
 
     assert storage.requested_refs == ["client:-1001:42:9001"]
 
 
-def test_restore_rejects_legacy_bot_api_refs(tmp_path: Path) -> None:
+def test_restore_raises_when_only_legacy_volumes(tmp_path: Path) -> None:
     repos = InMemoryRepositories()
     session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
     session_id = session.id
@@ -217,14 +214,16 @@ def test_restore_rejects_legacy_bot_api_refs(tmp_path: Path) -> None:
             storage_provider=FakeStorageProvider(),
             archive_service=FakeArchiveService(),
             staging_dir=tmp_path / "staging",
-            target_chat_id="-1001",
         ).execute(session_id, tmp_path / "restored")
 
-    assert exc_info.value.code == "legacy_volumes"
+    assert exc_info.value.code == "no_restorable_backups"
 
 
 def test_check_restore_ready_reports_legacy_volumes(tmp_path: Path) -> None:
-    from use_cases.restore.check_restore_ready import CheckRestoreReadyUseCase
+    from use_cases.restore.check_restore_ready import (
+        CheckRestoreReadyUseCase,
+        RestorePreflightReason,
+    )
 
     repos = InMemoryRepositories()
     session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
@@ -260,11 +259,81 @@ def test_check_restore_ready_reports_legacy_volumes(tmp_path: Path) -> None:
         source_items=repos.source_items,
         folders=repos.folders,
         storage_provider=FakeStorageProvider(),
-        target_chat_id="-1001",
     ).execute(session.id)
 
     assert result.ready is False
-    assert "Re-backup required" in result.message
+    assert result.reason == RestorePreflightReason.LEGACY_VOLUMES
+    assert result.legacy_volume_count == 1
+
+
+def test_check_restore_ready_ok_with_mixed_client_and_legacy(tmp_path: Path) -> None:
+    from use_cases.restore.check_restore_ready import CheckRestoreReadyUseCase
+
+    repos = InMemoryRepositories()
+    session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
+    created_at = _now()
+    client_item_id = uuid4()
+    legacy_item_id = uuid4()
+    repos.source_items.add(
+        SourceItemRecord(
+            id=client_item_id,
+            session_id=session.id,
+            source_path="/tmp/client.bin",
+            display_name="client.bin",
+            status="completed",
+            created_at=created_at,
+        )
+    )
+    repos.source_items.add(
+        SourceItemRecord(
+            id=legacy_item_id,
+            session_id=session.id,
+            source_path="/tmp/legacy.bin",
+            display_name="legacy.bin",
+            status="completed",
+            created_at=created_at,
+        )
+    )
+    repos.archive_volumes.add(
+        ArchiveVolumeRecord(
+            id=uuid4(),
+            source_item_id=client_item_id,
+            file_name="client.7z.001",
+            local_path="/tmp/client.7z.001",
+            part_number=1,
+            status="uploaded",
+            external_file_id="1",
+            external_message_id="42",
+            provider_download_ref="client:-1001:42:9001",
+            created_at=created_at,
+        )
+    )
+    repos.archive_volumes.add(
+        ArchiveVolumeRecord(
+            id=uuid4(),
+            source_item_id=legacy_item_id,
+            file_name="legacy.7z.001",
+            local_path="/tmp/legacy.7z.001",
+            part_number=1,
+            status="uploaded",
+            external_file_id="bot-file-id",
+            external_message_id="msg-1",
+            provider_download_ref="bot-unique-id",
+            created_at=created_at,
+        )
+    )
+
+    result = CheckRestoreReadyUseCase(
+        archive_volumes=repos.archive_volumes,
+        source_items=repos.source_items,
+        folders=repos.folders,
+        storage_provider=FakeStorageProvider(),
+    ).execute(session.id)
+
+    assert result.ready is True
+    assert result.restorable_count == 1
+    assert result.legacy_volume_count == 1
+    assert result.incomplete_volume_count == 0
 
 
 def test_check_restore_ready_ok_for_client_refs(tmp_path: Path) -> None:
@@ -304,14 +373,16 @@ def test_check_restore_ready_ok_for_client_refs(tmp_path: Path) -> None:
         source_items=repos.source_items,
         folders=repos.folders,
         storage_provider=FakeStorageProvider(),
-        target_chat_id="-1001",
     ).execute(session.id)
 
     assert result.ready is True
 
 
 def test_check_restore_ready_reports_incomplete_upload(tmp_path: Path) -> None:
-    from use_cases.restore.check_restore_ready import CheckRestoreReadyUseCase
+    from use_cases.restore.check_restore_ready import (
+        CheckRestoreReadyUseCase,
+        RestorePreflightReason,
+    )
 
     repos = InMemoryRepositories()
     session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
@@ -347,12 +418,11 @@ def test_check_restore_ready_reports_incomplete_upload(tmp_path: Path) -> None:
         source_items=repos.source_items,
         folders=repos.folders,
         storage_provider=FakeStorageProvider(),
-        target_chat_id="-1001",
     ).execute(session.id)
 
     assert result.ready is False
-    assert "did not finish uploading" in result.message
-    assert "Start Backup to retry" in result.message
+    assert result.reason == RestorePreflightReason.STALE_BACKUP
+    assert result.incomplete_volume_count == 1
 
 
 def test_restore_raises_when_no_volumes(tmp_path: Path) -> None:
@@ -366,12 +436,14 @@ def test_restore_raises_when_no_volumes(tmp_path: Path) -> None:
             storage_provider=FakeStorageProvider(),
             archive_service=FakeArchiveService(),
             staging_dir=tmp_path / "staging",
-            target_chat_id="-1001",
         ).execute(uuid4(), tmp_path / "restored")
 
 
 def test_check_restore_ready_ok_when_some_items_restorable(tmp_path: Path) -> None:
-    from use_cases.restore.check_restore_ready import CheckRestoreReadyUseCase
+    from use_cases.restore.check_restore_ready import (
+        CheckRestoreReadyUseCase,
+        RestorePreflightReason,
+    )
 
     repos = InMemoryRepositories()
     session = CreateSessionUseCase(repos.sessions).execute("default", "secret").session
@@ -434,12 +506,12 @@ def test_check_restore_ready_ok_when_some_items_restorable(tmp_path: Path) -> No
         source_items=repos.source_items,
         folders=repos.folders,
         storage_provider=FakeStorageProvider(),
-        target_chat_id="-1001",
     ).execute(session.id)
 
     assert result.ready is True
-    assert "Ready to restore 1 file(s)" in result.message
-    assert "Start Backup to retry" in result.message
+    assert result.reason == RestorePreflightReason.READY
+    assert result.restorable_count == 1
+    assert result.incomplete_volume_count == 1
 
 
 def test_restore_skips_incomplete_items_when_some_are_restorable(tmp_path: Path) -> None:
@@ -508,7 +580,6 @@ def test_restore_skips_incomplete_items_when_some_are_restorable(tmp_path: Path)
         storage_provider=storage,
         archive_service=FakeArchiveService(),
         staging_dir=tmp_path / "staging",
-        target_chat_id="-1001",
     ).execute(session.id, tmp_path / "restored")
 
     assert len(storage.downloaded_files) == 1
@@ -567,7 +638,6 @@ def test_restore_extracts_each_source_item_separately(tmp_path: Path) -> None:
         storage_provider=storage,
         archive_service=archive_service,
         staging_dir=tmp_path / "staging",
-        target_chat_id="-1001",
     ).execute(session.id, dest_path)
 
     assert archive_service.extract_calls == 2
@@ -613,7 +683,7 @@ def test_restore_session_rejects_non_writable_destination(
     def deny_write(_path, _mode: int) -> bool:
         return False
 
-    monkeypatch.setattr("use_cases.restore.dest_path.os.access", deny_write)
+    monkeypatch.setattr("use_cases.restore.restore_session.os.access", deny_write)
 
     with pytest.raises(domain.DomainError) as exc_info:
         RestoreSessionUseCase(
@@ -624,7 +694,6 @@ def test_restore_session_rejects_non_writable_destination(
             storage_provider=FakeStorageProvider(),
             archive_service=FakeArchiveService(),
             staging_dir=tmp_path / "staging",
-            target_chat_id="-1001",
         ).execute(session.id, dest_path)
 
     assert exc_info.value.code == "restore_destination_not_writable"

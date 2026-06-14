@@ -134,7 +134,7 @@ docker compose logs -f celery-worker-archive-1
 - [x] **Onion / clean architecture** — порты (`Protocol`), public API, bootstrap wiring (P0, закрыт 2026-06)
 - [ ] **Tkinter** — `application/gui/`; доработка UX (P0.3)
 - [ ] **7z / p7zip** — `seven_zip_service.py`, encrypt + split volumes
-- [ ] **Telegram Bot API** — legacy `TelegramProviderV1`; понять перед заменой на Client API
+- [ ] **Telegram Bot API** — legacy `TelegramProviderV1`; решение keep vs remove → **P0.2** (не «понять перед заменой», а осознанный выбор после Client API default)
 - [ ] **psycopg3** — прямые SQL в `migrate.py` (параллельно SQLAlchemy)
 
 ### Из CV — не планируется в v1
@@ -168,19 +168,22 @@ docker compose logs -f celery-worker-archive-1
 ### P0.1 — `use_cases` (первый проход)
 
 - [ ] Аудит пакета: дубли, лишние зависимости, согласованность портов и `*Record`
+- [ ] **Hexagonal architecture audit + naming pass** — пройти слои по [PROJECT.md §4](PROJECT.md#4-архитектура) и [SOLID_AUDIT.md](SOLID_AUDIT.md) после курса/ролика по hexagonal; зафиксировать глоссарий «кто что называется» (domain action vs use case vs adapter vs entrypoint). **Переименовать** классы/методы в `use_cases/` и `infrastructure/`, где имена размывают границы или дублируют соседний слой без причины — пример боли: `CheckRestoreReadyUseCase` (UC) ↔ `GuiEntrypoint.check_restore_ready` ↔ `BackendReceiver.check_restore_ready` (три «check_restore_ready» в цепочке, смысл разный). Цель: один канонический термин на сценарий, слой виден из имени (или из пакета), без копипасты суффиксов `UseCase` ради формы. **Не big-bang:** move-only PR + rename PR; gate — `pytest` + `lint-imports` + Roman smoke backup/restore.
 - [x] Выровнять restore/upload ref helpers под Client API (`client:` only, `has_legacy_bot_volumes`) — [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md)
 - [x] Pipeline rules вынесены из `domain`: `backup/gates.py`, `backup/idempotency.py`, `restore/refs.py`
 - [x] Idempotency policy в `use_cases/backup/idempotency.py`
 - [x] Failed-status wiring в Celery `tasks.py` (UC-4)
 - [x] Public API: `BackupApi` / `WorkerApi`; facade удалён (UC-3)
 - [x] Restore refs + extract → `dest_path` (UC-5, UC-7)
+- [ ] **Legacy Bot API — разгрести restore-слой** — сейчас legacy размазан по `restore/refs.py` (`is_legacy_volume`, `count_legacy_volumes`, `restore_ref_for_volume` → `DomainError.legacy_volumes()`), `check_restore_ready` + `preflight_types` (`LEGACY_VOLUMES`), `application/restore_preflight_messages`, `domain/errors.py`. **Зависит от** решения **Bot API: keep vs remove** (P0.2 ниже): (A) remove — выкинуть `UNSUPPORTED_LEGACY`, bot provider, legacy preflight/copy; restore = только `client:` refs. (B) keep upload-only — один явный модуль/док «bot backups never restore», минимум веток в refs. (C) migration — re-backup path, потом удалить legacy. **Цель:** перестать таскать «ёбаный legacy» через каждый файл restore при чтении кода. **Gate:** решение P0.2 зафиксировано + diff уменьшает legacy surface в `use_cases/restore/` (или удаляет полностью); `pytest` + Roman smoke restore/preflight для client-only и (если keep) bot-upload сценария.
 
 **Gate:** слой читается как эталон; ты прошёл backup happy path вручную после правок.
 
 ### P0.2 — `infrastructure`
 
 - [x] `TelegramClientProvider` + `TELEGRAM_PROVIDER` switch — [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md)
-- [ ] Deprecate Bot API после стабильного client restore smoke
+- [ ] **Client API + Bot API — слить или развести осознанно** — вопрос: почему нельзя restore backup, залитый через Bot API, через Client API (MTProto)? **Гипотеза:** файл в той же группе → user-session может `get_messages` + `download_media` по `chat_id` + `message_id`, если ref в БД это позволяет (сейчас bot volumes хранят bot `file_id`, restore policy — только `client:…`, иначе `legacy_volumes`). **Разобрать:** (1) что сохраняем при bot upload (`external_message_id`, `provider_download_ref`); (2) можно ли resolve bot ref → client ref без re-backup; (3) один unified provider vs два adapter + `TELEGRAM_PROVIDER=client|bot`; (4) upload bot + restore client — один продуктовый путь или dead end. **Связано:** **Bot API: keep vs remove** (ниже), **Legacy Bot API — разгрести restore-слой** (P0.1). **Gate:** design note в [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md) («restore bot-era via client: да/нет и почему») + решение merge / client-only / re-backup; smoke если выбран restore старых bot backup без re-upload.
+- [ ] **Bot API: keep vs remove** — проработать, стоит ли оставлять legacy Bot API (`TelegramProviderV1`, compose `--profile bot`, вкладка Settings «Bot API»). **Контекст:** Client API — default; restore только для `client:` refs; Bot-backups не restorable (`is_legacy_volume` / `LEGACY_VOLUMES` preflight, предупреждение в Settings). **Связано:** **Legacy Bot API — разгрести restore-слой** (P0.1); **Client API + Bot API — слить или развести** (выше). **Варианты:** (A) удалить полностью; (B) upload-only, «no restore»; (C) re-backup через Client API; (D) client restore по `message_id` для bot-era volumes (если design note подтвердит). **Gate:** решение в [TELEGRAM_CLIENT_API_MIGRATION.md](TELEGRAM_CLIENT_API_MIGRATION.md) + [PROJECT.md](PROJECT.md); если remove — код/settings/compose вычищены; Roman smoke backup+restore на Client-only path.
 - [x] Structured logging (file + unified format) — `telegram-uploader.log`; correlation `session_id` — позже
 
 **Gate:** `docker compose up` + полный backup smoke; restore download без 404 — **Test Client API ✅; GUI Restore Session — Roman**.
@@ -223,7 +226,8 @@ docker compose logs -f celery-worker-archive-1
   4. В таблице такие файлы помечать **жёлтым замочком** (`external` / «imported from Telegram») — не были добавлены через Add File.
   5. Пользователь может переименовать / перенести / удалить / повторно backup как обычный item.
 - [ ] **Cross-session import (Client API)** — восстанавливать файлы из **другой** backup-группы или чужой session и добавлять в **свою** session (расширение Import выше). До скачки: `source_item` без локального файла → Size/Modified = «—» в `GetSessionProgressUseCase`. После скачки/импорта: прописать `source_path` на файл на диске **или** сохранить `size_bytes` / mtime в БД → таблица подхватит размер при Refresh. **Сейчас не проработано:** `RestoreSessionUseCase` пишет в `dest_path`, но **не связывает** восстановленный файл с записью в очереди.
-- [ ] **Restore Session UX** — отдельная пустая папка по умолчанию; restore всех completed items по одному extract на файл (частично сделано в UC-7).
+- [ ] **Настройка папки для restore (результат extract)** — в Settings задать **папку по умолчанию**, куда кладётся восстановленный файл после 7z extract (`dest_path`). **Сейчас:** hardcode `~/Restored/` в `application/gui/restore_dest.py`; каждый Restore — `filedialog` с `initialdir` оттуда; путь не сохраняется между сессиями. **Сделать:** поле в Settings (+ persist в `.env` / `SettingsValues`, как остальные настройки); optional режим «всегда сюда без диалога» vs «только подставлять в диалог». UC `validate_restore_dest_path` без изменений. **Не путать** со staging (`archive_cache_dir/restore`) — там encrypted `.7z.*`, не user-facing результат. **Gate:** сохранил path в Settings → Restore использует его; Roman smoke: restore в не-default папку, перезапуск GUI — path помнится.
+- [ ] **Restore Session UX** — см. **Настройка папки для restore** выше; прочее: restore completed items в scope, empty-folder warnings (частично UC-7).
 
 **Gate:** в группе есть backup без записи в GUI → Import → файл в папке «Restored» с замочком → rename/move работает.
 

@@ -20,6 +20,12 @@ from application.env_store import save_settings_env
 from application.gui.drawer import ProgressDrawer
 from application.gui.errors import format_user_error
 from application.gui.explorer import ExplorerView
+from application.gui.messages import (
+    count_backup_outcomes,
+    format_backup_complete_message,
+    format_restore_saved_message,
+    is_backup_pipeline_idle,
+)
 from application.gui.restore_dest import (
     default_restore_dir,
     is_under_install_root,
@@ -28,6 +34,7 @@ from application.gui.restore_dest import (
 from application.gui.settings import SettingsDialog, TestClientApiDialogResult
 from application.gui.theme import apply_theme
 from application.gui.unlock import UnlockScreen
+from application.restore_preflight_scope import RestorePreflightScope
 from application.settings_values import SettingsValues
 
 
@@ -54,6 +61,9 @@ class BackupApp:
         self._restore_tick_job: str | None = None
         self._restore_tick_start: float | None = None
         self._restore_dest: Path | None = None
+        self._backup_watch_active = False
+        self._backup_poll_job: str | None = None
+        self._backup_watch_session_id: UUID | None = None
 
         self._show_unlock()
 
@@ -61,6 +71,7 @@ class BackupApp:
         self._root.mainloop()
 
     def _clear_container(self) -> None:
+        self._stop_backup_watch()
         for child in self._container.winfo_children():
             child.destroy()
         self._unlock = None
@@ -159,6 +170,7 @@ class BackupApp:
             )
 
     def _lock_session(self) -> None:
+        self._stop_backup_watch()
         self._session = None
         self._show_unlock()
 
@@ -278,6 +290,7 @@ class BackupApp:
             detail = f"Enqueued {enqueued} item(s) for processing."
             self._drawer.show_result("Backup started", detail)
             messagebox.showinfo("Backup started", detail, parent=self._root)
+            self._start_backup_watch(session_id)
         self._refresh_queue()
 
     def _on_restore(self) -> None:
@@ -293,11 +306,21 @@ class BackupApp:
             return
 
         folder_id = self._explorer.selected_folder_id() if self._explorer is not None else None
+        scope = RestorePreflightScope(
+            folder_name=self._explorer.selected_folder_name() if self._explorer else None,
+            restore_entire_session=(
+                self._explorer.is_all_files_selected() if self._explorer is not None else True
+            ),
+        )
         self._begin_restore_ui(dest)
 
         def worker() -> None:
             try:
-                preflight = self._receiver.check_restore_ready(session_id, folder_id=folder_id)
+                preflight = self._receiver.check_restore_ready(
+                    session_id,
+                    folder_id=folder_id,
+                    scope=scope,
+                )
             except Exception as error:
                 detail = format_user_error("Restore check", error)
                 self._root.after(0, lambda: self._finish_restore_failed(detail))
@@ -415,31 +438,79 @@ class BackupApp:
         if self._drawer is not None:
             title = "Restore unavailable" if warning else "Restore failed"
             self._drawer.show_result(title, detail)
-        if warning:
-            messagebox.showwarning("Restore unavailable", detail, parent=self._root)
-        else:
-            messagebox.showerror("Restore failed", detail, parent=self._root)
+        kind = "warning" if warning else "error"
+        title = "Restore unavailable" if warning else "Restore failed"
+        self._show_modal(title, detail, kind=kind)
 
     def _finish_restore_success(self, result: RestoreResultDTO, dest: Path) -> None:
         self._end_restore_ui()
-        if result.downloaded_paths:
-            files_list = "\n".join(
-                f"• {Path(path).resolve()}" for path in result.downloaded_paths[:10]
-            )
-            if len(result.downloaded_paths) > 10:
-                files_list += f"\n• … and {len(result.downloaded_paths) - 10} more"
-            detail = (
-                f"Restored to {dest.resolve()}\n\n"
-                f"Extracted {len(result.downloaded_paths)} file(s):\n{files_list}"
-            )
-        else:
-            detail = (
-                f"No files were restored to {dest.resolve()}. "
-                "Check session volumes and encryption key."
-            )
+        detail = format_restore_saved_message(dest, result.downloaded_paths)
+        title = "File saved" if result.downloaded_paths else "Restore incomplete"
+        kind = "info" if result.downloaded_paths else "warning"
         if self._drawer is not None:
-            self._drawer.show_result("Restore complete", detail)
-        messagebox.showinfo("Restore complete", detail, parent=self._root)
+            self._drawer.show_result(title, detail)
+        self._show_modal(title, detail, kind=kind)
+
+    def _show_modal(self, title: str, message: str, *, kind: str = "info") -> None:
+        def show() -> None:
+            self._root.update_idletasks()
+            self._root.lift()
+            self._root.focus_force()
+            self._root.attributes("-topmost", True)
+            try:
+                if kind == "warning":
+                    messagebox.showwarning(title, message, parent=self._root)
+                elif kind == "error":
+                    messagebox.showerror(title, message, parent=self._root)
+                else:
+                    messagebox.showinfo(title, message, parent=self._root)
+            finally:
+                self._root.attributes("-topmost", False)
+
+        self._root.after_idle(show)
+
+    def _start_backup_watch(self, session_id: UUID) -> None:
+        self._stop_backup_watch()
+        self._backup_watch_active = True
+        self._backup_watch_session_id = session_id
+        self._schedule_backup_poll()
+
+    def _stop_backup_watch(self) -> None:
+        self._backup_watch_active = False
+        self._backup_watch_session_id = None
+        if self._backup_poll_job is not None:
+            self._root.after_cancel(self._backup_poll_job)
+            self._backup_poll_job = None
+
+    def _schedule_backup_poll(self) -> None:
+        if not self._backup_watch_active:
+            return
+        self._backup_poll_job = self._root.after(3000, self._poll_backup_completion)
+
+    def _poll_backup_completion(self) -> None:
+        self._backup_poll_job = None
+        if not self._backup_watch_active or self._backup_watch_session_id is None:
+            return
+        session_id = self._backup_watch_session_id
+        if self._session is None or self._session.session_id != session_id:
+            self._stop_backup_watch()
+            return
+        try:
+            snapshot = self._receiver.get_session_queue_snapshot(session_id)
+        except Exception:
+            self._schedule_backup_poll()
+            return
+        if self._explorer is not None:
+            self._explorer.render_queue_snapshot(snapshot)
+        if is_backup_pipeline_idle(item.status for item in snapshot.items):
+            completed, failed = count_backup_outcomes(item.status for item in snapshot.items)
+            detail = format_backup_complete_message(completed, failed)
+            self._stop_backup_watch()
+            if self._drawer is not None:
+                self._drawer.show_result("Backup complete", detail)
+            self._show_modal("Backup complete", detail, kind="info")
+            return
+        self._schedule_backup_poll()
 
     def _refresh_queue(self) -> None:
         session_id = self._require_session()

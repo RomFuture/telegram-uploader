@@ -7,6 +7,7 @@ from use_cases.shared.dto import (
     ProviderErrorCategory,
     ProviderFileInfo,
     ProviderLimits,
+    RestoreRefCapability,
     UploadResult,
 )
 from use_cases.shared.ports.archive_service import ArchiveServiceResult, ArchiveVolumePart
@@ -68,22 +69,23 @@ class FakeArchiveService:
 
 
 class FakeStorageProvider:
-    def __init__(self) -> None:
+    def __init__(self, *, remote_target: str = "-1001") -> None:
+        self.remote_target = remote_target
         self.uploaded_display_names: list[str] = []
         self.downloaded_files: list[Path] = []
         self.requested_refs: list[str] = []
         self._uploads: dict[str, bytes] = {}
         self._next_message_id = 1
 
-    def healthcheck(self, remote_target: str) -> bool:
-        return bool(remote_target)
+    def healthcheck(self) -> bool:
+        return bool(self.remote_target)
 
-    def upload_file(self, local_path: Path, remote_target: str, display_name: str) -> UploadResult:
+    def upload_file(self, local_path: Path, display_name: str) -> UploadResult:
         self.uploaded_display_names.append(display_name)
         message_id = self._next_message_id
         self._next_message_id += 1
         document_id = 9000 + message_id
-        provider_ref = f"client:{remote_target}:{message_id}:{document_id}"
+        provider_ref = f"client:{self.remote_target}:{message_id}:{document_id}"
         self._uploads[provider_ref] = local_path.read_bytes()
         return UploadResult(
             provider_name="fake",
@@ -126,6 +128,18 @@ class FakeStorageProvider:
             on_progress(len(content), len(content))
         self.downloaded_files.append(destination_path)
         return destination_path
+
+    def assess_restore_ref(self, provider_download_ref: str) -> RestoreRefCapability:
+        if not provider_download_ref:
+            return RestoreRefCapability.UNSUPPORTED
+        if provider_download_ref.startswith("client:"):
+            return RestoreRefCapability.RESTORABLE
+        return RestoreRefCapability.UNSUPPORTED_LEGACY
+
+    def resolve_restore_ref(self, provider_download_ref: str) -> str:
+        if self.assess_restore_ref(provider_download_ref) != RestoreRefCapability.RESTORABLE:
+            raise ValueError(f"Unsupported restore ref: {provider_download_ref!r}")
+        return provider_download_ref
 
     def classify_error(self, error: Exception) -> ClassifiedProviderError:
         return ClassifiedProviderError(category=ProviderErrorCategory.UNKNOWN, reason=str(error))

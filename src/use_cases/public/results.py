@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from uuid import UUID
 
+from use_cases.restore import RestorePreflightReason, RestorePreflightResult
+
 
 @dataclass(frozen=True, slots=True)
 class SessionResult:

@@ -7,11 +7,11 @@ from uuid import uuid4
 import pytest
 
 import domain as domain
+from observation.restore_download_progress import make_download_progress_callback
 from tests.fakes.ports import FakeArchiveService, FakeStorageProvider
 from tests.fakes.repositories import InMemoryRepositories
-from use_cases.restore.download_progress import make_download_progress_callback
 from use_cases.restore.restore_session import RestoreSessionUseCase
-from use_cases.restore.scope import restorable_source_item_ids_for_folder
+from use_cases.restore.scope import filter_restorable_ids_by_folder, is_session_wide_restore_scope
 from use_cases.session.create import CreateDatabaseUseCase, CreateFolderUseCase
 from use_cases.shared.folders import DEFAULT_FOLDER_NAME
 from use_cases.shared.persistence import ArchiveVolumeRecord, SourceItemRecord
@@ -57,6 +57,12 @@ def _add_restorable_item(
     )
 
 
+def test_is_session_wide_restore_scope() -> None:
+    assert is_session_wide_restore_scope(None, None) is True
+    assert is_session_wide_restore_scope(uuid4(), DEFAULT_FOLDER_NAME) is True
+    assert is_session_wide_restore_scope(uuid4(), "Work") is False
+
+
 def test_restorable_scope_all_files_includes_every_folder() -> None:
     id_a = uuid4()
     id_b = uuid4()
@@ -81,8 +87,8 @@ def test_restorable_scope_all_files_includes_every_folder() -> None:
             folder_id=uuid4(),
         ),
     ]
-    result = restorable_source_item_ids_for_folder(
-        all_restorable=all_ids,
+    result = filter_restorable_ids_by_folder(
+        restorable_ids_in_session=all_ids,
         source_items=items,
         folder_id=uuid4(),
         folder_name=DEFAULT_FOLDER_NAME,
@@ -115,8 +121,8 @@ def test_restorable_scope_filters_single_folder() -> None:
             folder_id=folder_b,
         ),
     ]
-    result = restorable_source_item_ids_for_folder(
-        all_restorable={item_a, item_b},
+    result = filter_restorable_ids_by_folder(
+        restorable_ids_in_session={item_a, item_b},
         source_items=items,
         folder_id=folder_b,
         folder_name="TEST",
@@ -154,7 +160,6 @@ def test_restore_from_folder_downloads_only_that_folder(tmp_path: Path) -> None:
         storage_provider=storage,
         archive_service=FakeArchiveService(),
         staging_dir=tmp_path / "staging",
-        target_chat_id="-1001",
     ).execute(session.id, tmp_path / "restored", folder_id=test_folder.id)
 
     assert len(storage.downloaded_files) == 1
@@ -191,7 +196,6 @@ def test_restore_from_all_files_downloads_whole_session(tmp_path: Path) -> None:
         storage_provider=storage,
         archive_service=FakeArchiveService(),
         staging_dir=tmp_path / "staging",
-        target_chat_id="-1001",
     ).execute(session.id, tmp_path / "restored", folder_id=all_files.id)
 
     assert len(storage.downloaded_files) == 2
@@ -219,7 +223,6 @@ def test_restore_empty_folder_raises(tmp_path: Path) -> None:
             storage_provider=FakeStorageProvider(),
             archive_service=FakeArchiveService(),
             staging_dir=tmp_path / "staging",
-            target_chat_id="-1001",
         ).execute(session.id, tmp_path / "restored", folder_id=empty_folder.id)
 
     assert error.value.code == "no_restorable_backups_in_folder"
@@ -230,7 +233,7 @@ def test_download_progress_callback_logs_percent_and_heartbeat(
 ) -> None:
     import logging
 
-    caplog.set_level(logging.INFO, logger="use_cases.restore.download")
+    caplog.set_level(logging.INFO, logger="observation.restore.download")
     callback = make_download_progress_callback(label="vol.7z.001", heartbeat_seconds=0.0)
     callback(0, 100)
     callback(25, 100)

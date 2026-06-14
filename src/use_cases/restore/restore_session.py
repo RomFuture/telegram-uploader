@@ -1,16 +1,22 @@
-import logging
+import os
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
 import domain as domain
-from use_cases.restore.dest_path import validate_restore_dest_path
-from use_cases.restore.download_progress import make_download_progress_callback
+from observation.restore_download_progress import make_download_progress_callback
+from observation.restore_session_log import (
+    log_download_finished,
+    log_download_starting,
+    log_extract_complete,
+    log_extract_starting,
+    log_restore_complete,
+    log_restore_started,
+)
 from use_cases.restore.download_volume import download_volume_to_dir
-from use_cases.restore.refs import has_legacy_bot_volumes, restorable_source_item_ids
-from use_cases.restore.scope import restorable_source_item_ids_for_folder
-from use_cases.shared.folders import is_default_folder_name
+from use_cases.restore.refs import source_item_ids_restorable_in_session
+from use_cases.restore.scope import filter_restorable_ids_by_folder, is_session_wide_restore_scope
 from use_cases.shared.ports.archive_service import ArchiveServicePort
 from use_cases.shared.ports.storage_provider import StorageProviderPort
 from use_cases.shared.repositories.archive_volume import ArchiveVolumeRepository
@@ -19,7 +25,28 @@ from use_cases.shared.repositories.session import SessionRepository
 from use_cases.shared.repositories.source_item import SourceItemRepository
 from use_cases.shared.types import ArchiveVolume
 
-logger = logging.getLogger(__name__)
+_WRITE_PROBE_NAME = ".telegram-uploader-write-probe"
+
+
+def validate_restore_dest_path(dest_path: Path) -> None:
+    """Raise DomainError when the process cannot create or overwrite files in dest_path."""
+    try:
+        dest_path.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise domain.DomainError.restore_destination_not_writable(dest_path, str(error)) from error
+
+    if not os.access(dest_path, os.W_OK | os.X_OK):
+        raise domain.DomainError.restore_destination_not_writable(
+            dest_path,
+            "The folder is not writable by your user account.",
+        )
+
+    probe = dest_path / _WRITE_PROBE_NAME
+    try:
+        probe.write_bytes(b"")
+        probe.unlink()
+    except OSError as error:
+        raise domain.DomainError.restore_destination_not_writable(dest_path, str(error)) from error
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +58,6 @@ class RestoreSessionUseCase:
     storage_provider: StorageProviderPort
     archive_service: ArchiveServicePort
     staging_dir: Path
-    target_chat_id: str
 
     def execute(
         self,
@@ -42,26 +68,26 @@ class RestoreSessionUseCase:
     ) -> list[Path]:
         session = self.sessions.require(session_id)
         volumes = self.archive_volumes.require_for_session(session_id)
-        all_restorable = restorable_source_item_ids(volumes, self.target_chat_id)
-        if not all_restorable:
-            if has_legacy_bot_volumes(volumes):
-                raise domain.DomainError.legacy_volumes()
+        restorable_ids_in_session = source_item_ids_restorable_in_session(
+            volumes, self.storage_provider
+        )
+        if not restorable_ids_in_session:
             raise domain.DomainError.no_restorable_backups(session_id)
 
         folder_name = self._folder_name(folder_id)
         source_item_records = self.source_items.list_by_session(session_id)
-        restorable_items = restorable_source_item_ids_for_folder(
-            all_restorable=all_restorable,
+        restorable_ids_in_scope = filter_restorable_ids_by_folder(
+            restorable_ids_in_session=restorable_ids_in_session,
             source_items=source_item_records,
             folder_id=folder_id,
             folder_name=folder_name,
         )
-        if not restorable_items:
+        if not restorable_ids_in_scope:
             scope = folder_name or "selected folder"
             raise domain.DomainError.no_restorable_backups_in_folder(scope)
 
         volumes_to_restore = [
-            volume for volume in volumes if volume.source_item_id in restorable_items
+            volume for volume in volumes if volume.source_item_id in restorable_ids_in_scope
         ]
 
         validate_restore_dest_path(dest_path)
@@ -69,16 +95,15 @@ class RestoreSessionUseCase:
 
         scope_label = (
             "all files in session"
-            if folder_id is None or is_default_folder_name(folder_name or "")
+            if is_session_wide_restore_scope(folder_id, folder_name)
             else f"folder {folder_name!r}"
         )
-        logger.info(
-            "restore started session_id=%s dest=%s scope=%s items=%d volumes=%d",
+        log_restore_started(
             session_id,
             dest_path,
             scope_label,
-            len(restorable_items),
-            len(volumes_to_restore),
+            item_count=len(restorable_ids_in_scope),
+            volume_count=len(volumes_to_restore),
         )
 
         by_item: dict[UUID, list[ArchiveVolume]] = defaultdict(list)
@@ -97,24 +122,22 @@ class RestoreSessionUseCase:
                     f"{volume.file_name} item {item_index}/{total_items} "
                     f"part {part_index}/{len(sorted_volumes)}"
                 )
-                logger.info("download starting %s", label)
+                log_download_starting(label)
                 progress = make_download_progress_callback(label=label)
                 downloaded.append(
                     download_volume_to_dir(
                         volume,
                         self.storage_provider,
                         self.staging_dir,
-                        self.target_chat_id,
                         on_progress=progress,
                     )
                 )
-                logger.info("download finished %s -> %s", label, downloaded[-1])
-            logger.info(
-                "extract starting item %d/%d parts=%d dest=%s",
+                log_download_finished(label, downloaded[-1])
+            log_extract_starting(
                 item_index,
                 total_items,
-                len(sorted_volumes),
-                dest_path,
+                part_count=len(sorted_volumes),
+                dest_path=dest_path,
             )
             extracted_paths.append(
                 self.archive_service.extract(
@@ -123,19 +146,9 @@ class RestoreSessionUseCase:
                     encryption_key=session.encryption_key,
                 )
             )
-            logger.info(
-                "extract complete item %d/%d -> %s",
-                item_index,
-                total_items,
-                extracted_paths[-1],
-            )
+            log_extract_complete(item_index, total_items, extracted_paths[-1])
 
-        logger.info(
-            "restore complete session_id=%s scope=%s extracted=%d path(s)",
-            session_id,
-            scope_label,
-            len(extracted_paths),
-        )
+        log_restore_complete(session_id, scope_label, extracted_count=len(extracted_paths))
         return extracted_paths
 
     def _folder_name(self, folder_id: UUID | None) -> str | None:

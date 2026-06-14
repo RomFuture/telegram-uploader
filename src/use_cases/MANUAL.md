@@ -163,38 +163,41 @@ Adapters (GUI, workers) — **только** `use_cases.public` (см. `tests/te
 
 | Модуль | Применение | Связи |
 |--------|------------|-------|
-| `restore_session.py` | **GUI Restore Session** | session key + scope filter + download × N + extract → `dest_path` |
-| `check_restore_ready.py` | Preflight перед restore | provider healthcheck + scoped restorable count |
-| `scope.py` | Фильтр по sidebar folder | All files → все items; иначе `folder_id` match |
-| `dest_path.py` | Writable probe dest | до download; `restore_destination_not_writable` |
+| `restore_session.py` | **GUI Restore Session** | scope filter + writable dest probe + download × N + extract → `dest_path` |
+| `check_restore_ready.py` | Preflight перед restore | counts + reason; scope copy в `application/restore_preflight_scope.py` |
+| `scope.py` | Фильтр по sidebar folder | `is_session_wide_restore_scope`, `filter_restorable_ids_by_folder` |
 | `download_volume.py` | Общий шаг download | `restore_ref_for_volume` → provider (+ optional `on_progress`) |
-| `download_progress.py` | Heartbeat / % logging | callback для Telethon `progress_callback` |
-| `refs.py` | Client API refs only | `client:{chat}:{msg}:{doc}`; legacy bot → `legacy_volumes` |
+| `observation/restore_download_progress.py` | Heartbeat / % logging during restore download | callback для Telethon `progress_callback`; не restore policy |
+| `refs.py` | Restore ref policy | `assess_restore_ref` через `StorageProviderPort`; legacy → `UNSUPPORTED_LEGACY` |
 | `process_restore_volume.py` | worker: один том | download в staging **без** extract |
 
 ### Restore session (полный GUI-путь)
 
-1. `restorable_source_item_ids` — все client-ref volumes uploaded.
-2. `restorable_source_item_ids_for_folder` — optional filter по `RestoreSessionCommand.folder_id`.
+1. `source_item_ids_restorable_in_session(volumes, storage_provider)` — IDs items, которые можно restore во всей session.
+2. `filter_restorable_ids_by_folder` — сужение до выбранной папки; «All files» = `is_session_wide_restore_scope`.
 3. `validate_restore_dest_path(dest_path)`.
 4. Для каждого source item: volumes по `part_number` → `download_volume_to_dir` (progress logs).
 5. `ArchiveServicePort.extract` → **файлы пользователю в `dest_path`**, staging = encrypted `.7z.*`.
 
-### refs.py — политика v1
+### refs.py — restore policy (provider-agnostic)
 
 | Функция | Поведение |
 |---------|-----------|
-| `is_client_restore_ref` | ref начинается с `client:` |
-| `restore_ref_for_volume` | только client ref; иначе `legacy_volumes` или `missing_external_file_id` |
-| `has_legacy_bot_volumes` | uploaded volumes с non-client ref |
-| `restorable_source_item_ids` | item restorable если **все** его volumes uploaded + client ref |
+| `is_volume_restorable(volume, provider)` | UPLOADED + `provider.assess_restore_ref(ref) == RESTORABLE` |
+| `restore_ref_for_volume(volume, provider)` | RESTORABLE → `resolve_restore_ref`; legacy → `legacy_volumes` |
+| `is_legacy_volume` / `count_legacy_volumes` | UPLOADED + `UNSUPPORTED_LEGACY`; optional filter по item ids |
+| `count_incomplete_volumes` | non-restorable в scope, без legacy |
+| `source_item_ids_in_restore_scope` | item ids для текущей папки или всей session |
+| `source_item_ids_restorable_in_session(volumes, provider)` | item restorable если **все** parts restorable |
+| `filter_restorable_ids_by_folder(restorable_ids_in_session=...)` | session IDs → subset для выбранной папки |
+| `is_session_wide_restore_scope(folder_id, folder_name)` | True для GUI «All files» (вся session) |
 
-Bot `message:{chat}:{id}` / `file_id` fallback **удалён** — re-backup под Client API.
+Формат ref (`client:` и т.д.) знает только adapter в `infrastructure/providers/`.
 
 ### Логирование restore
 
-Logger `use_cases.restore` — start/complete scope, extract milestones.  
-Logger `use_cases.restore.download` — 10% progress + 30s heartbeat (см. [CHANGES.md](../../docs/refactor/CHANGES.md)).
+Logger `observation.restore.session` — start/complete scope, download/extract milestones.
+Logger `observation.restore.download` — 10% progress + 30s heartbeat (см. [CHANGES.md](../../docs/refactor/CHANGES.md)).
 
 ---
 
@@ -240,7 +243,7 @@ Plain dataclass для repos: `id`, строковые `status`, paths как `s
 |----------|----------------------------|------------|
 | `TaskQueuePort` | `CeleryTaskQueue` | enqueue archive/upload/cleanup/restore |
 | `ArchiveServicePort` | `ArchiveServiceAdapter` → `SevenZipService` | archive + extract |
-| `StorageProviderPort` | `TelegramClientProvider` (`TELEGRAM_PROVIDER=client`) | upload/download; optional `on_progress` kwarg |
+| `StorageProviderPort` | `TelegramClientProvider` (`TELEGRAM_PROVIDER=client`) | upload/download; `assess_restore_ref` / `resolve_restore_ref`; optional `on_progress` kwarg |
 
 Legacy: `TelegramProviderV1` (Bot API) — только upload path; restore refs v1 не поддерживает.
 
@@ -347,7 +350,7 @@ Session + Add File + **Start Backup**. Breakpoint в `ProcessArchiveVolumeUseCas
 
 **Цель:** folder-scoped restore, client refs, extract в `dest_path`, progress logs.
 
-**Покрывает:** `CheckRestoreReadyUseCase`, `RestoreSessionUseCase`, `scope.py`, `refs.py`, `dest_path.py`, `download_progress.py`, extract.
+**Покрывает:** `CheckRestoreReadyUseCase`, `RestoreSessionUseCase`, `scope.py`, `refs.py`, `observation/restore_download_progress.py`, extract.
 
 ### Подготовка
 
@@ -356,12 +359,12 @@ Completed backup (client refs). Unit: `tests/test_use_cases_restore.py`, `tests/
 ### Шаги
 
 1. Breakpoint: `CheckRestoreReadyUseCase.execute(..., folder_id=...)` — message с scope.
-2. Breakpoint: `RestoreSessionUseCase.execute` — `restorable_source_item_ids_for_folder`.
+2. Breakpoint: `RestoreSessionUseCase.execute` — `filter_restorable_ids_by_folder`.
 3. **F7** `validate_restore_dest_path`.
 4. Breakpoint: `restore_ref_for_volume` — только `client:` (legacy → exception).
-5. Breakpoint: `make_download_progress_callback` → `download_file(..., on_progress=...)`.
+5. Breakpoint: `observation.restore_download_progress.make_download_progress_callback` → `download_file(..., on_progress=...)`.
 6. **F7** `archive_service.extract` — `dest_dir == user dest_path`.
-7. Лог: `use_cases.restore` + `use_cases.restore.download` в `telegram-uploader.log`.
+7. Лог: `observation.restore.session` + `observation.restore.download` в `telegram-uploader.log`.
 
 ### Worker-ответвление
 
@@ -378,8 +381,8 @@ Completed backup (client refs). Unit: `tests/test_use_cases_restore.py`, `tests/
 | Файл не в нужной папке sidebar | `enqueue` / `manage_source_item.move` → `folder_id` |
 | Restore качает «лишние» файлы | `restore/scope.py`, `RestoreSessionCommand.folder_id`, GUI `explorer.selected_folder_id` |
 | Restore 404 / legacy bot | `restore/refs.py` — только `client:`; re-backup |
-| Permission denied на extract | `dest_path.py`, GUI preflight в `application/gui/restore_dest.py` |
-| Долгая тишина в логах при download | `download_progress.py`, Telethon callback в `TelegramClientProvider` |
+| Permission denied на extract | `restore_session.py` (`validate_restore_dest_path`), GUI preflight в `application/gui/restore_dest.py` |
+| Долгая тишина в логах при download | `observation/restore_download_progress.py`, Telethon callback в `TelegramClientProvider` |
 | Archive не стартует | `gates.py`, `idempotency.py`, статус item |
 | Upload без refs | `process_upload_volume.py` + client provider |
 | Stuck после worker fail | `report_failure.py`, `tasks._run_with_failure_report` |
